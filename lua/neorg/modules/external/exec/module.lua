@@ -14,7 +14,7 @@ end
 
 module.load = function()
     module.required["core.neorgcmd"].add_commands_from_table({
-        execute = {
+        exec = {
             args = 1,
             subcommands = {
                 view = { args = 0, name = "exec.view" },
@@ -32,7 +32,7 @@ module.config.private = {}
 module.private = {
     tasks = {},
 
-    ns = vim.api.nvim_create_namespace("execute"),
+    ns = vim.api.nvim_create_namespace("exec"),
 
     virtual = {
         init = function(id)

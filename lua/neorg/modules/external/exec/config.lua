@@ -17,6 +17,10 @@ return {
             cmd = "bash ${0}",
             type = "interpreted",
         },
+        zsh = {
+            cmd = "zsh ${0}",
+            type = "interpreted",
+        },
         php = {
             cmd = "php ${0}",
             type = "interpreted",
@@ -38,13 +42,12 @@ return {
             ]],
         },
         go = {
-            -- it's compiled but 'go run' behave similar to an interpreter
             cmd = "goimports -w ${0} && go run ${0}",
-            type = "interpreted",
+            type = "compiled",
             main_wrap = [[
             package main
 
-            int main() {
+            func main() {
                 ${1}
             }
             ]],
