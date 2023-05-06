@@ -45,7 +45,7 @@ module.private = {
             end
 
             table.insert(curr_task.output, { { "", "Keyword" } })
-            table.insert(curr_task.output, { { "Result:", "Keyword" } })
+            table.insert(curr_task.output, { { "@result", "Keyword" } })
 
             vim.api.nvim_buf_set_extmark(
                 curr_task.buf,
@@ -54,6 +54,7 @@ module.private = {
                 0,
                 { id = id, virt_lines = curr_task.output }
             )
+            table.insert(curr_task.output, { { "@end", "Keyword" } })
             return id
         end,
 
@@ -87,7 +88,7 @@ module.private = {
             end
 
             table.insert(curr_task.output, "")
-            table.insert(curr_task.output, "Result:")
+            table.insert(curr_task.output, "@result")
 
             for i, line in ipairs(curr_task.output) do
                 vim.api.nvim_buf_set_lines(
@@ -160,6 +161,7 @@ module.private = {
                 end
             end
         end
+
     end,
 
     spawn = function(id, command)
@@ -181,6 +183,13 @@ module.private = {
             end,
 
             on_exit = function()
+                if module.public.mode == "view" then
+                  table.insert(module.private.tasks[id].output, { { "@end", "Keyword" } })
+                  module.private.virtual.update(id)
+                else
+                  table.insert(module.private.tasks[id].output, "@end")
+                  module.private.normal.update(id, "@end")
+                end
                 spinner.shut(module.private.tasks[id].spinner, module.private.ns)
                 vim.fn.delete(module.private.tasks[id].temp_filename)
                 module.private.tasks[id].running = false
