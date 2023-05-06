@@ -45,6 +45,7 @@ module.private = {
             end
 
             table.insert(curr_task.output, { { "", "Keyword" } })
+            table.insert(curr_task.output, { { os.date("#exec.start %Y-%m-%dT%H:%M:%S%Z", os.time()), "Keyword"} })
             table.insert(curr_task.output, { { "@result", "Keyword" } })
 
             vim.api.nvim_buf_set_extmark(
@@ -54,7 +55,6 @@ module.private = {
                 0,
                 { id = id, virt_lines = curr_task.output }
             )
-            table.insert(curr_task.output, { { "@end", "Keyword" } })
             return id
         end,
 
@@ -88,6 +88,7 @@ module.private = {
             end
 
             table.insert(curr_task.output, "")
+            table.insert(curr_task.output, os.date("#exec.start %Y-%m-%dT%H:%M:%S%Z", os.time()))
             table.insert(curr_task.output, "@result")
 
             for i, line in ipairs(curr_task.output) do
@@ -139,6 +140,7 @@ module.private = {
             code_block = {},
             spinner = nil,
             running = false,
+            start = nil,
         }
 
         return id
@@ -170,6 +172,7 @@ module.private = {
         module.private[mode == "view" and "virtual" or "normal"].init(id)
 
         module.private.tasks[id].running = true
+        module.private.tasks[id].start = os.clock()
         module.private.tasks[id].jobid = vim.fn.jobstart(command, {
             stdout_buffered = false,
 
@@ -183,13 +186,24 @@ module.private = {
             end,
 
             on_exit = function()
+                local dur = string.format("#exec.elapsed_s %0.4f", os.clock() - module.private.tasks[id].start)
                 if module.public.mode == "view" then
                   table.insert(module.private.tasks[id].output, { { "@end", "Keyword" } })
+                  table.insert(module.private.tasks[id].output, 3, { { dur, "Keyword" } })
                   module.private.virtual.update(id)
                 else
                   table.insert(module.private.tasks[id].output, "@end")
+                  -- table.insert(module.private.tasks[id].output, 3, d)
                   module.private.normal.update(id, "@end")
+                  vim.api.nvim_buf_set_lines(
+                      module.private.tasks[id].buf,
+                      module.private.tasks[id].code_block["end"].row + 3,
+                      module.private.tasks[id].code_block["end"].row + 3,
+                      true,
+                      { dur }
+                  )
                 end
+
                 spinner.shut(module.private.tasks[id].spinner, module.private.ns)
                 vim.fn.delete(module.private.tasks[id].temp_filename)
                 module.private.tasks[id].running = false
