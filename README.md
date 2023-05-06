@@ -1,12 +1,14 @@
 # neorg-exec
 
+    **PRE-ALPHA** - breaking changes incoming soon. See Planning, below
+
 Code block execution for [neorg](https://github.com/nvim-neorg/neorg), similar to [Org Mode's 'eval'](https://orgmode.org/manual/Evaluating-Code-Blocks.html)
 
 neorg-exec captures the results of the code block evaluation and inserts them in the norg file, right after the code block.
 
-The insertion point is after a newline and the ‘RESULTS’ keyword.
+The insertion point is after a newline and the ‘Results’ keyword.
 
-neorg-exec creates the ‘RESULTS’ keyword if one is not already there.
+neorg-exec creates the ‘Results’ keyword if one is not already there.
 
 
 This code began with [tamton-aquib's PR](https://github.com/nvim-neorg/neorg/pull/618) - thanks to @tamton-aquib.
@@ -101,7 +103,7 @@ vim.keymap.set('n', '<C-c>', ':Neorg exec normal<CR>', {silent = true}) -- searc
 You can probably do it with `neorg_callbacks` but I haven't got there yet.
 
 
-# TODO
+# Planning
 
 ## Some bugs I noticed after importing
 
