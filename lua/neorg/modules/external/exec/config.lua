@@ -42,7 +42,7 @@ return {
             ]],
         },
         go = {
-            cmd = "goimports -w ${0} && go run ${0}",
+            cmd = "goimports -w ${0} && NO_COLOR=1 go run ${0}",
             type = "compiled",
             main_wrap = [[
             package main
