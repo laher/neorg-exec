@@ -94,6 +94,10 @@ You can exec a code block with an ex command:
 :Neorg exec normal
 ```
 
+ * `normal` writes the results directly into the file, below the code block.
+ * There is also `view`, which renders the results into 'virtual lines' instead.
+  * After running `view`, then `materialize` to write it to the file, or `hide` to delete the virtual text.
+
 Or you can bind a key like this:
 
 ```lua
@@ -107,30 +111,31 @@ You can probably do it with `neorg_callbacks` but I haven't got there yet.
 
 ## Some bugs I noticed after importing
 
- * [ ] After an invocation fails, there's a null pointer when you try again
+ * [ ] After an invocation fails, there's an index-out-of-bounds when you try again
  * [ ] Results rendering can be a bit unpredictable. Sometimes it gets a bit mangled, sometimes it can duplicate the results section. Spinner is also a bit funky.
- * [ ] Virtual mode does some weird stuff sometimes, affecting navigation.
+ * [ ] `show` (virtual_lines) mode does some weird stuff affecting navigation around the file.
 
 ## I'd like to do
 
  * [ ] Much of the original PR checklist - see below
  * [ ] UI:
-    * ~~Render 'virtual lines' into a popup instead of the buffer.~~ Doesn't suit multiple blocks
+    * [x] ~~Render 'virtual lines' into a popup instead of the buffer.~~ Doesn't suit multiple blocks
     * [ ] Maybe spinner could go into the gutter.
     * [ ] output handling: 'replace' @result block (instead of 'prepend' another @result block)
  * [ ] Code block tagging, for indicating _how to run_ the code.
     * Similar to [https://orgmode.org/manual/Environment-of-a-Code-Block.html](org-mode's tagging for environment) and [https://orgmode.org/manual/Results-of-Evaluation.html](result handling).
-    * ~~Consider tags above code blocks like `#exec cache=5m pwd=.. result.tagtype=@`~~
-    * [x] Could instead be individual tags per item <- This is @vhyrro's preference.
-    * ~~Or, possibly even merge it into the `@code` line ... `@code bash cache=5m`~~
-    * [ ] Args, env support.
+    * Options:
+        * [-] ~~Consider tags above code blocks like `#exec cache=5m pwd=.. result.tagtype=@`~~
+        * [x] Could instead be individual tags per item <- This is @vhyrro's preference.
+        * [-] ~~Or, possibly even merge it into the `@code` line ... `@code bash cache=5m`~~
+    * [ ] cli args, env support.
     * [ ] Caching - similar to org-mode but with cache timeout (plus the hash in the result block)
     * [ ] Named blocks.
     * [ ] Handling options for stderr, etc. Needs thought - do we want nested tags?
     * [ ] Output type? e.g. `json`. Then results could be syntax-hightlighted just like code blocks.
  * [ ] Results
     * [x] Render in a ranged tag? like `@result\ndone...\n@end` (or optionally `|result\n** some norg-formatted output\n|end`)
-      * verbatim only for now.
+      * verbatim only, for now. It seems like Macros could fulfil generation of norg markup <- @vhyrro's recommendation.
     * [x] Tag with start time? like `#exec.start 2020-01-01T00:11:22.123Z`
     * [ ] Then maybe at the end ... (insert above the @result tag)
       * [x] duration - `#exec.duration_s 1.23s`
@@ -154,7 +159,8 @@ Some examples of what I think a nice tagged code block + results block could loo
 ls
 @end
 
-#exec.start time=2020-01-01T00:11:22.123Z codehash=0000deadbeef1234
+#exec.start 2020-01-01T00:11:22.123Z
+#exec.codehash=0000deadbeef1234
 #exec.duration=1.23s
 #exec.exitcode=0
 @result
@@ -173,7 +179,8 @@ file2.txt
 ./generate-todos-from-gmail
 @end
 
-#exec.start time=2020-01-01T00:11:22.123Z codehash=0000deadbeef1234
+#exec.start time=2020-01-01T00:11:22.123Z
+#exec.codehash=0000deadbeef1234
 #exec.duration 1.23s
 #exec.exitcode=0
 |result
