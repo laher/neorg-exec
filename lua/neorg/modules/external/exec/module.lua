@@ -3,8 +3,6 @@ require("neorg.modules.base")
 local spinner = require("neorg.modules.external.exec.spinner")
 
 local module = neorg.modules.create("external.exec")
-local ts = require("nvim-treesitter.ts_utils")
--- local ts = module.required["core.integrations.treesitter"].get_ts_utils()
 module.setup = function()
     if vim.fn.isdirectory(module.public.tmpdir) == 0 then
         vim.fn.mkdir(module.public.tmpdir, "p")
@@ -220,6 +218,7 @@ module.public = {
     mode = nil,
 
     current_node_info = function()
+        local ts = module.required["core.integrations.treesitter"].get_ts_utils()
         local node = ts.get_node_at_cursor(0, true)
         local p = module.required["core.integrations.treesitter"].find_parent(node, "^ranged_verbatim_tag$")
 
