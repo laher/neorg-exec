@@ -185,22 +185,24 @@ module.private = {
                 module.private.handle_lines(id, data, "Error")
             end,
 
-            on_exit = function()
+            on_exit = function(_, data)
+                local exitcode = string.format("#exec.exitcode %s", data)
                 local dur = string.format("#exec.elapsed_s %0.4f", os.clock() - module.private.tasks[id].start)
                 if module.public.mode == "view" then
                   table.insert(module.private.tasks[id].output, { { "@end", "Keyword" } })
+                  table.insert(module.private.tasks[id].output, 3, { { exitcode, "Keyword" } })
                   table.insert(module.private.tasks[id].output, 3, { { dur, "Keyword" } })
                   module.private.virtual.update(id)
                 else
                   table.insert(module.private.tasks[id].output, "@end")
-                  -- table.insert(module.private.tasks[id].output, 3, d)
+                  -- table.insert(module.private.tasks[id].output, 3, d) <-- this didn't work, sadly. That's why I did nvim_buf_set_lines
                   module.private.normal.update(id, "@end")
                   vim.api.nvim_buf_set_lines(
                       module.private.tasks[id].buf,
                       module.private.tasks[id].code_block["end"].row + 3,
                       module.private.tasks[id].code_block["end"].row + 3,
                       true,
-                      { dur }
+                      { dur, exitcode }
                   )
                 end
 
