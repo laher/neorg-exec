@@ -17,7 +17,7 @@ module.load = function()
         exec = {
             args = 1,
             subcommands = {
-                view = { args = 0, name = "exec.view" },
+                virtual = { args = 0, name = "exec.virtual" },
                 normal = { args = 0, name = "exec.normal" },
                 hide = { args = 0, name = "exec.hide" },
                 materialize = { args = 0, name = "exec.materialize" },
@@ -154,7 +154,7 @@ module.private = {
 
         for _, line in ipairs(data) do
             if line ~= "" then
-                if module.public.mode == "view" then
+                if module.public.mode == "virtual" then
                     table.insert(module.private.tasks[id].output, { { line, hl } })
                     module.private.virtual.update(id)
                 else
@@ -169,7 +169,7 @@ module.private = {
     spawn = function(id, command)
         local mode = module.public.mode
 
-        module.private[mode == "view" and "virtual" or "normal"].init(id)
+        module.private[mode == "virtual" and "virtual" or "normal"].init(id)
 
         module.private.tasks[id].running = true
         module.private.tasks[id].start = os.clock()
@@ -188,7 +188,7 @@ module.private = {
             on_exit = function(_, data)
                 local exitcode = string.format("#exec.exitcode %s", data)
                 local dur = string.format("#exec.elapsed_s %0.4f", os.clock() - module.private.tasks[id].start)
-                if module.public.mode == "view" then
+                if module.public.mode == "virtual" then
                   table.insert(module.private.tasks[id].output, { { "@end", "Keyword" } })
                   table.insert(module.private.tasks[id].output, 3, { { exitcode, "Keyword" } })
                   table.insert(module.private.tasks[id].output, 3, { { dur, "Keyword" } })
@@ -273,8 +273,8 @@ module.public = {
         end
     end,
 
-    view = function()
-        module.public.mode = "view"
+    virtual = function()
+        module.public.mode = "virtual"
         local id = module.private.init()
         module.public.base(id)
     end,
@@ -291,7 +291,7 @@ module.public = {
             local code_start, code_end = id_cfg.code_block["start"].row + 1, id_cfg.code_block["end"].row + 1
 
             if code_start <= cr and code_end >= cr then
-                if module.public.mode == "view" then
+                if module.public.mode == "virtual" then
                     vim.api.nvim_buf_del_extmark(0, module.private.ns, id_idx)
                 else
                     vim.api.nvim_buf_set_lines(0, code_end, code_end + #id_cfg["output"], false, {})
@@ -341,8 +341,8 @@ module.public = {
 }
 
 module.on_event = function(event)
-    if event.split_type[2] == "exec.view" then
-        vim.schedule(module.public.view)
+    if event.split_type[2] == "exec.virtual" then
+        vim.schedule(module.public.virtual)
     elseif event.split_type[2] == "exec.normal" then
         vim.schedule(module.public.normal)
     elseif event.split_type[2] == "exec.hide" then
@@ -354,7 +354,7 @@ end
 
 module.events.subscribed = {
     ["core.neorgcmd"] = {
-        ["exec.view"] = true,
+        ["exec.virtual"] = true,
         ["exec.normal"] = true,
         ["exec.hide"] = true,
         ["exec.materialize"] = true,

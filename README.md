@@ -95,8 +95,8 @@ You can exec a code block with an ex command:
 ```
 
  * `normal` writes the results directly into the file, below the code block.
- * There is also `view`, which renders the results into 'virtual lines' instead.
-  * After running `view`, then `materialize` to write it to the file, or `hide` to delete the virtual text.
+ * There is also `virtual`, which renders the results into 'virtual text' instead.
+  * After running `virtual`, then `materialize` to write it to the file, or `hide` to delete the virtual text.
 
 Or you can bind a key like this:
 
@@ -111,39 +111,48 @@ You can probably do it with `neorg_callbacks` but I haven't got there yet.
 
 ## Some bugs I noticed after importing
 
- * [ ] After an invocation fails, there's an index-out-of-bounds when you try again
- * [ ] Results rendering can be a bit unpredictable. Sometimes it gets a bit mangled, sometimes it can duplicate the results section. Spinner is also a bit funky.
- * [ ] `show` (virtual_lines) mode does some weird stuff affecting navigation around the file.
+ * [ ] After an invocation fails, there's sometimes an index-out-of-bounds when you retry.
+ * Rendering quirks:
+    * [ ] Results rendering can be a bit unpredictable. Sometimes it gets a bit mangled, sometimes it can duplicate the results section. Spinner is also a bit funky.
+    * [ ] `virtual` mode does some weird stuff affecting navigation around the file.
 
 ## I'd like to do
 
- * [ ] Much of the original PR checklist - see below
- * [ ] UI:
+ * Much of the original PR checklist - see below
+ * UI:
     * [x] ~~Render 'virtual lines' into a popup instead of the buffer.~~ Doesn't suit multiple blocks
     * [ ] Maybe spinner could go into the gutter.
     * [ ] output handling: 'replace' @result block (instead of 'prepend' another @result block)
- * [ ] Code block tagging, for indicating _how to run_ the code.
-    * Similar to [https://orgmode.org/manual/Environment-of-a-Code-Block.html](org-mode's tagging for environment) and [https://orgmode.org/manual/Results-of-Evaluation.html](result handling).
+ * Code block tagging, for indicating _how to run_ the code.
+    * Similar to org-mode's tagging for [code block environment](https://orgmode.org/manual/Environment-of-a-Code-Block.html) and [result handling](https://orgmode.org/manual/Results-of-Evaluation.html).
     * Options:
-        * [-] ~~Consider tags above code blocks like `#exec cache=5m pwd=.. result.tagtype=@`~~
+        * [ ] ~~Consider tags above code blocks like `#exec cache=5m pwd=.. result.tagtype=@`~~
         * [x] Could instead be individual tags per item <- This is @vhyrro's preference.
-        * [-] ~~Or, possibly even merge it into the `@code` line ... `@code bash cache=5m`~~
+        * [ ] ~~Or, possibly even merge it into the `@code` line ... `@code bash cache=5m`~~
     * [ ] cli args, env support.
     * [ ] Caching - similar to org-mode but with cache timeout (plus the hash in the result block)
     * [ ] Named blocks.
     * [ ] Handling options for stderr, etc. Needs thought - do we want nested tags?
     * [ ] Output type? e.g. `json`. Then results could be syntax-hightlighted just like code blocks.
- * [ ] Results
+ * Results
     * [x] Render in a ranged tag? like `@result\ndone...\n@end` (or optionally `|result\n** some norg-formatted output\n|end`)
       * verbatim only, for now. It seems like Macros could fulfil generation of norg markup <- @vhyrro's recommendation.
     * [x] Tag with start time? like `#exec.start 2020-01-01T00:11:22.123Z`
     * [ ] Then maybe at the end ... (insert above the @result tag)
       * [x] duration - `#exec.duration_s 1.23s`
       * [ ] exit code
- * [ ] A nice way to assess whether a compiler/interpreter is available & feasible. e.g. `type -p gcc`. Seems related to cross-platform support.
+ * [ ] A way to assess whether a compiler/interpreter is available & feasible. e.g. `type -p gcc`. Seems related to cross-platform support.
  * [ ] Run multiple blocks at once, within a node, etc. Caching, env variables, macros?
  * [ ] Hopefully, tangle integration.
- * [ ] file-level tagging (similar to @code block tagging)
+ * [ ] file-level tagging (similar to `@code` block tagging)
+ * Subcommand changes:
+   * [x] rename `view` to `virtual`.
+   * [ ] Restructure, maybe: `:Neorg exec block [normal|virtual]` `:Neorg exec buf [normal|virtual]` ... not sure yet how to make this extendable.
+ * [ ] Macro support:
+    * [ ] `.exec.call named-block arg arg`
+    * [ ] `.exec.result named-result`
+    * [ ] some way to address code blocks across files
+    * [ ] some way to chain things together? IDK if this is a good idea, but maybe worth thinking about.
 
 ### Planning - some examples
 
@@ -160,9 +169,9 @@ ls
 @end
 
 #exec.start 2020-01-01T00:11:22.123Z
-#exec.codehash=0000deadbeef1234
-#exec.duration=1.23s
-#exec.exitcode=0
+#exec.codehash 0000deadbeef1234
+#exec.duration 1.23s
+#exec.exitcode 0
 @result
 dir/
 file1.txt
@@ -170,19 +179,19 @@ file2.txt
 @end
  ```
 
-2. Generating some neorg output - put it in a standard range... (@vhyrro not so keen on this)
+2. Generating some neorg output - put it in a standard range... (@vhyrro not so keen on this, because macros should be able to do something better)
 
 ```norg
 #exec.cache 24h
 #exec.result.tagtype=|
 @code bash
-./generate-todos-from-gmail
+./generate-todos-from-gmail.sh
 @end
 
-#exec.start time=2020-01-01T00:11:22.123Z
-#exec.codehash=0000deadbeef1234
+#exec.start time 2020-01-01T00:11:22.123Z
+#exec.codehash 0000deadbeef1234
 #exec.duration 1.23s
-#exec.exitcode=0
+#exec.exitcode 0
 |result
 *** todos
  - (?) Reply to daily report
@@ -202,7 +211,7 @@ See [https://github.com/nvim-neorg/neorg/pull/618#issue-1402358683](Pull Request
      * [ ]  check extra parameters for wrapping in main function? (+ named blocks)
    * [x]  interpreted (python, lua, bash, etc)
  * [x]  subcommands
-   * [x]  view (virtual_lines)
+   * [x]  ~~view~~ (virtual_lines) renamed to `virtual`
    * [x]  normal (maybe a better command name, normal lines added to buffer.)
  * [ ]  add logging?
  * [ ]  check for timeout / limit number of output lines.
