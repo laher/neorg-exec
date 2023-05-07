@@ -113,17 +113,32 @@ You can probably do it with `neorg_callbacks` but I haven't got there yet.
 
 ## I'd like to do
 
- * [ ] Render 'virtual lines' into a popup instead of the buffer. ... Maybe spinner could go into the gutter.
- * [ ] Code block tagging, for indicating _how to run_ the code. Similar to org-mode's caching indicators.
-    * [ ] Consider tags above code blocks like `#exec cache=5m pwd=.. result.tagtype=@`
-    * [ ] Could instead be individual tags per item,
-    * [ ] Or, possibly even merge it into the `@code` line ... `@code bash cache=5m`
+ * [ ] Much of the original PR checklist - see below
+ * [ ] UI:
+    * ~~Render 'virtual lines' into a popup instead of the buffer.~~ Doesn't suit multiple blocks
+    * [ ] Maybe spinner could go into the gutter.
+    * [ ] output handling: 'replace' @result block (instead of 'prepend' another @result block)
+ * [ ] Code block tagging, for indicating _how to run_ the code.
+    * Similar to [https://orgmode.org/manual/Environment-of-a-Code-Block.html](org-mode's tagging for environment) and [https://orgmode.org/manual/Results-of-Evaluation.html](result handling).
+    * ~~Consider tags above code blocks like `#exec cache=5m pwd=.. result.tagtype=@`~~
+    * [x] Could instead be individual tags per item <- This is @vhyrro's preference.
+    * ~~Or, possibly even merge it into the `@code` line ... `@code bash cache=5m`~~
+    * [ ] Args, env support.
+    * [ ] Caching - similar to org-mode but with cache timeout (plus the hash in the result block)
+    * [ ] Named blocks.
+    * [ ] Handling options for stderr, etc. Needs thought - do we want nested tags?
+    * [ ] Output type? e.g. `json`. Then results could be syntax-hightlighted just like code blocks.
  * [ ] Results
-    * [ ] Render in a ranged tag? like `@result\ndone...\n@end` (or optionally `|result\n** some norg-formatted output\n|end`)
-    * [ ] Tag with timings and result code? like `#exec.result.start time=2020-01-01T00:11:22.123Z codehash=0000deadbeef1234`
-    * [ ] Then maybe at the end, something like `#exec.result.finish duration=1.23s exitcode=0`
+    * [x] Render in a ranged tag? like `@result\ndone...\n@end` (or optionally `|result\n** some norg-formatted output\n|end`)
+      * verbatim only for now.
+    * [x] Tag with start time? like `#exec.start 2020-01-01T00:11:22.123Z`
+    * [ ] Then maybe at the end ... (insert above the @result tag)
+      * [x] duration - `#exec.duration_s 1.23s`
+      * [ ] exit code
  * [ ] A nice way to assess whether a compiler/interpreter is available & feasible. e.g. `type -p gcc`. Seems related to cross-platform support.
- * [ ] Run a file at once. Caching, env variables, macros?
+ * [ ] Run multiple blocks at once, within a node, etc. Caching, env variables, macros?
+ * [ ] Hopefully, tangle integration.
+ * [ ] file-level tagging (similar to @code block tagging)
 
 ### Planning - some examples
 
@@ -132,36 +147,41 @@ Some examples of what I think a nice tagged code block + results block could loo
 1. Generating some random output - put it in a verbatim range
 
 ```norg
-#exec cache=5m pwd=..
+#exec.cache 5m
+#exec.pwd=..
+#exec.results=replace
 @code bash
 ls
 @end
 
-+exec.result.start time=2020-01-01T00:11:22.123Z codehash=0000deadbeef1234
+#exec.start time=2020-01-01T00:11:22.123Z codehash=0000deadbeef1234
+#exec.duration=1.23s
+#exec.exitcode=0
 @result
 dir/
 file1.txt
 file2.txt
 @end
-+exec.result.finish duration=1.23s exitcode=0
  ```
 
-2. Generating some neorg output - put it in a standard range...
+2. Generating some neorg output - put it in a standard range... (@vhyrro not so keen on this)
 
 ```norg
-#exec cache=24h result.tagtype=|
+#exec.cache 24h
+#exec.result.tagtype=|
 @code bash
 ./generate-todos-from-gmail
 @end
 
-+exec.result.start time=2020-01-01T00:11:22.123Z codehash=0000deadbeef1234
+#exec.start time=2020-01-01T00:11:22.123Z codehash=0000deadbeef1234
+#exec.duration 1.23s
+#exec.exitcode=0
 |result
 *** todos
  - (?) Reply to daily report
  - ( ) Breakfast with Tiffany
  - ( ) Cook the ice-cream
 |end
-+exec.result.finish duration=1.23s exitcode=0
  ```
 
 ## 'Possible todos' from original PR
