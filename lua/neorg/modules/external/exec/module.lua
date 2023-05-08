@@ -15,8 +15,7 @@ module.load = function()
         exec = {
             args = 1,
             subcommands = {
-                virtual = { args = 0, name = "exec.virtual" },
-                normal = { args = 0, name = "exec.normal" },
+                block = { args = 0, name = "exec.block" },
                 hide = { args = 0, name = "exec.hide" },
                 materialize = { args = 0, name = "exec.materialize" },
             },
@@ -38,21 +37,17 @@ module.private = {
             curr_task.spinner = spinner.start(curr_task, module.private.ns)
 
             -- Fix for re-execution
-            if not vim.tbl_isempty(curr_task.output) then
-                curr_task.output = {}
-            end
+            -- if not vim.tbl_isempty(curr_task.output) then
+                -- curr_task.output = {}
+            -- end
 
-            table.insert(curr_task.output, { { "", "Keyword" } })
-            table.insert(curr_task.output, { { os.date("#exec.start %Y-%m-%dT%H:%M:%S%Z", os.time()), "Keyword"} })
-            table.insert(curr_task.output, { { "@result", "Keyword" } })
+            curr_task.output = {
+              { { "", "Keyword" } },
+              { { os.date("#exec.start %Y-%m-%dT%H:%M:%S%Z", os.time()), "Keyword" } },
+              { { "@result", "Keyword" } },
+            }
 
-            vim.api.nvim_buf_set_extmark(
-                curr_task.buf,
-                module.private.ns,
-                curr_task.code_block["end"].row,
-                0,
-                { id = id, virt_lines = curr_task.output }
-            )
+            module.private.virtual.update(id)
             return id
         end,
 
@@ -69,31 +64,44 @@ module.private = {
         end,
     },
 
+    -- 3 lines to @result
+    header = 3,
     normal = {
         init = function(id)
             local curr_task = module.private.tasks[id]
             curr_task.spinner = spinner.start(curr_task, module.private.ns)
 
+            -- overwrite it
+            -- TODO locate block with treesitter instead
             if not vim.tbl_isempty(curr_task.output) then
                 vim.api.nvim_buf_set_lines(
                     curr_task.buf,
                     curr_task.code_block["end"].row + 1,
-                    curr_task.code_block["end"].row + #curr_task.output + 1,
+                    curr_task.code_block["end"].row + 1 + module.private.header + 1 + #curr_task.output + 1,
                     true,
                     {}
                 )
+                -- initialise
                 curr_task.output = {}
             end
 
-            table.insert(curr_task.output, "")
-            table.insert(curr_task.output, os.date("#exec.start %Y-%m-%dT%H:%M:%S%Z", os.time()))
-            table.insert(curr_task.output, "@result")
+            vim.api.nvim_buf_set_lines(
+                curr_task.buf,
+                curr_task.code_block["end"].row + 1,
+                curr_task.code_block["end"].row + 1,
+                true,
+                { "", string.format("%s",os.date("#exec.start %Y-%m-%dT%H:%M:%S%Z", os.time())), "@result", "@end" }
+            )
+            -- table.insert(curr_task.output, "")
+            -- table.insert(curr_task.output, os.date("#exec.start %Y-%m-%dT%H:%M:%S%Z", os.time()))
+            -- table.insert(curr_task.output, "@result")
+            -- table.insert(curr_task.output, "@end")
 
             for i, line in ipairs(curr_task.output) do
                 vim.api.nvim_buf_set_lines(
                     curr_task.buf,
-                    curr_task.code_block["end"].row + i,
-                    curr_task.code_block["end"].row + i,
+                    curr_task.code_block["end"].row + module.private.header + i,
+                    curr_task.code_block["end"].row + module.privat.header + i,
                     true,
                     { line }
                 )
@@ -104,8 +112,8 @@ module.private = {
             local curr_task = module.private.tasks[id]
             vim.api.nvim_buf_set_lines(
                 curr_task.buf,
-                curr_task.code_block["end"].row + #curr_task.output,
-                curr_task.code_block["end"].row + #curr_task.output,
+                curr_task.code_block["end"].row + module.private.header + #curr_task.output,
+                curr_task.code_block["end"].row + module.private.header + #curr_task.output,
                 true,
                 { line }
             )
@@ -131,6 +139,7 @@ module.private = {
 
         module.private.tasks[id] = {
             buf = vim.api.nvim_get_current_buf(),
+            header = {},
             output = {},
             interrupted = false,
             jobid = nil,
@@ -161,7 +170,6 @@ module.private = {
                 end
             end
         end
-
     end,
 
     spawn = function(id, command)
@@ -174,7 +182,7 @@ module.private = {
         module.private.tasks[id].jobid = vim.fn.jobstart(command, {
             stdout_buffered = false,
 
-            -- TODO: check exit code conditions and colors
+            -- TODO: check colors
             on_stdout = function(_, data)
                 module.private.handle_lines(id, data, "Function")
             end,
@@ -184,24 +192,23 @@ module.private = {
             end,
 
             on_exit = function(_, data)
-                local exitcode = string.format("#exec.exitcode %s", data)
-                local dur = string.format("#exec.elapsed_s %0.4f", os.clock() - module.private.tasks[id].start)
+                local exec_exit = string.format("#exec.exit %s %0.4fs", data, os.clock() - module.private.tasks[id].start)
                 if module.public.mode == "virtual" then
-                  table.insert(module.private.tasks[id].output, { { "@end", "Keyword" } })
-                  table.insert(module.private.tasks[id].output, 3, { { exitcode, "Keyword" } })
-                  table.insert(module.private.tasks[id].output, 3, { { dur, "Keyword" } })
-                  module.private.virtual.update(id)
+                    local curr_task = module.private.tasks[id]
+                    table.insert(curr_task.output, 2, { { exec_exit, "Keyword" } })
+                    table.insert(curr_task.output, { { "@end", "Keyword" } })
+                    module.private.virtual.update(id)
                 else
-                  table.insert(module.private.tasks[id].output, "@end")
-                  -- table.insert(module.private.tasks[id].output, 3, d) <-- this didn't work, sadly. That's why I did nvim_buf_set_lines
-                  module.private.normal.update(id, "@end")
-                  vim.api.nvim_buf_set_lines(
-                      module.private.tasks[id].buf,
-                      module.private.tasks[id].code_block["end"].row + 3,
-                      module.private.tasks[id].code_block["end"].row + 3,
-                      true,
-                      { dur, exitcode }
-                  )
+                    -- table.insert(module.private.tasks[id].output, "@end")
+                    -- table.insert(module.private.tasks[id].output, 3, d) <-- this didn't work, sadly. That's why I did nvim_buf_set_lines
+                    -- module.private.normal.update(id, "@end")
+                    vim.api.nvim_buf_set_lines(
+                        module.private.tasks[id].buf,
+                        module.private.tasks[id].code_block["end"].row + 3,
+                        module.private.tasks[id].code_block["end"].row + 3,
+                        true,
+                        { exec_exit }
+                    )
                 end
 
                 spinner.shut(module.private.tasks[id].spinner, module.private.ns)
@@ -213,23 +220,44 @@ module.private = {
 }
 
 module.public = {
-    tmpdir = "/tmp/neorg-execute/",
+    tmpdir = "/tmp/neorg-exec/", -- TODO use io.tmpname? for portability
     -- mode = "normal",
     mode = nil,
 
-    current_node_info = function()
+    current_node = function()
         local ts = module.required["core.integrations.treesitter"].get_ts_utils()
         local node = ts.get_node_at_cursor(0, true)
         local p = module.required["core.integrations.treesitter"].find_parent(node, "^ranged_verbatim_tag$")
+        return p
+    end,
 
+    current_node_info = function()
+        local p = module.public.current_node()
         -- TODO: Add checks here
         local cb = module.required["core.integrations.treesitter"].get_tag_info(p, true)
         if not cb then
             vim.notify("Not inside a code block!")
             return
         end
-
         return cb
+    end,
+
+    current_node_carrover_tags = function()
+        local p = module.public.current_node()
+        local tags = {}
+        --local p = p:prev_named_sibling():prev_named_sibling()
+        for child, _ in p:iter_children() do
+            if child:type() == "strong_carryover_set" then
+                for child2, _ in child:iter_children() do
+                    if child2:type() == "strong_carryover" then
+                        local cot = module.required["core.integrations.treesitter"].get_tag_info(child2, true)
+                        tags[cot.name] = cot.parameters
+                        -- vim.notify(string.format("%s: %s", cot.name, table.concat(cot.parameters, '-')))
+                    end
+                end
+            end
+        end
+        return tags
     end,
 
     base = function(id)
@@ -239,12 +267,29 @@ module.public = {
         end
 
         if code_block.name == "code" then
+            -- default is 'normal'
+            module.public.mode = "normal"
+
+            local tags = module.public.current_node_carrover_tags()
+            for tag, params in pairs(tags) do
+                local paramS = table.concat(params)
+                if tag == "exec.name" then
+                    -- vim.notify(params)
+                    vim.notify(string.format("code block name is %s", paramS))
+                elseif tag == "exec.render" then
+                    -- vim.notify(string.format("result rendering is %s", paramS))
+                    if paramS == "virtual" then
+                        module.public.mode = "virtual"
+                    end
+                end
+            end
             module.private.tasks[id]["code_block"] = code_block
 
             -- FIX: temp fix remove this!
             code_block["parameters"] = vim.split(code_block["parameters"][1], " ")
             local ft = code_block.parameters[1]
 
+            -- TODO - use io.tmpfile() / io.tmpname()?
             module.private.tasks[id].temp_filename = module.public.tmpdir .. id .. "." .. ft
 
             local lang_cfg = module.config.public.lang_cmds[ft]
@@ -269,16 +314,12 @@ module.public = {
 
             local command = lang_cfg.cmd:gsub("${0}", module.private.tasks[id].temp_filename)
             module.private.spawn(id, command)
+        elseif code_block.name == "result" then
+            vim.notify("This is a result block, not a code block. Look up to the code block!")
         end
     end,
 
-    virtual = function()
-        module.public.mode = "virtual"
-        local id = module.private.init()
-        module.public.base(id)
-    end,
-    normal = function()
-        module.public.mode = "normal"
+    do_block = function()
         local id = module.private.init()
         module.public.base(id)
     end,
@@ -311,6 +352,7 @@ module.public = {
 
             if code_start <= cr and code_end >= cr then
                 local curr_task = module.private.tasks[id_idx]
+
                 vim.api.nvim_buf_set_extmark(
                     curr_task.buf,
                     module.private.ns,
@@ -340,10 +382,8 @@ module.public = {
 }
 
 module.on_event = function(event)
-    if event.split_type[2] == "exec.virtual" then
-        vim.schedule(module.public.virtual)
-    elseif event.split_type[2] == "exec.normal" then
-        vim.schedule(module.public.normal)
+    if event.split_type[2] == "exec.block" then
+        vim.schedule(module.public.do_block)
     elseif event.split_type[2] == "exec.hide" then
         vim.schedule(module.public.hide)
     elseif event.split_type[2] == "exec.materialize" then
@@ -353,8 +393,7 @@ end
 
 module.events.subscribed = {
     ["core.neorgcmd"] = {
-        ["exec.virtual"] = true,
-        ["exec.normal"] = true,
+        ["exec.block"] = true,
         ["exec.hide"] = true,
         ["exec.materialize"] = true,
     },
