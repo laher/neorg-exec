@@ -45,6 +45,7 @@ module.private = {
               { { "", "Keyword" } },
               { { os.date("#exec.start %Y-%m-%dT%H:%M:%S%Z", os.time()), "Keyword" } },
               { { "@result", "Keyword" } },
+              { { "", "Function" } },
             }
 
             module.private.virtual.update(id)
@@ -74,7 +75,7 @@ module.private = {
             -- TODO locate block with treesitter instead
             if not vim.tbl_isempty(curr_task.output) then
 								local linecount = vim.api.nvim_buf_line_count(0)
-								local lastline = curr_task.code_block["end"].row + 1 + module.private.header + 1 + #curr_task.output + 1
+								local lastline = curr_task.code_block["end"].row + 1 + #curr_task.output + 1
 								if lastline > linecount then
 									lastline = linecount
 								end
@@ -88,37 +89,50 @@ module.private = {
                 -- initialise
                 curr_task.output = {}
             end
+            curr_task.output = { "", string.format("%s",os.date("#exec.start %Y-%m-%dT%H:%M:%S%Z", os.time())), "@result", "" }
 
             vim.api.nvim_buf_set_lines(
                 curr_task.buf,
                 curr_task.code_block["end"].row + 1,
                 curr_task.code_block["end"].row + 1,
                 true,
-                { "", string.format("%s",os.date("#exec.start %Y-%m-%dT%H:%M:%S%Z", os.time())), "@result", "@end" }
+                curr_task.output
             )
             -- table.insert(curr_task.output, "")
             -- table.insert(curr_task.output, os.date("#exec.start %Y-%m-%dT%H:%M:%S%Z", os.time()))
             -- table.insert(curr_task.output, "@result")
             -- table.insert(curr_task.output, "@end")
 
-            for i, line in ipairs(curr_task.output) do
-                vim.api.nvim_buf_set_lines(
-                    curr_task.buf,
-                    curr_task.code_block["end"].row + module.private.header + i,
-                    curr_task.code_block["end"].row + module.privat.header + i,
-                    true,
-                    { line }
-                )
-            end
+            -- for i, line in ipairs(curr_task.output) do
+            --     vim.api.nvim_buf_set_lines(
+            --         curr_task.buf,
+            --         curr_task.code_block["end"].row + module.private.header + i,
+            --         curr_task.code_block["end"].row + module.private.header + i,
+            --         true,
+            --         { line }
+            --     )
+            -- end
         end,
 
         update = function(id, line)
             local curr_task = module.private.tasks[id]
             vim.api.nvim_buf_set_lines(
                 curr_task.buf,
-                curr_task.code_block["end"].row + module.private.header + #curr_task.output,
-                curr_task.code_block["end"].row + module.private.header + #curr_task.output,
+                curr_task.code_block["end"].row + #curr_task.output,
+                curr_task.code_block["end"].row + #curr_task.output,
                 true,
+                { line }
+            )
+        end,
+        update_line = function(id, line, charnum)
+            local curr_task = module.private.tasks[id]
+            vim.api.nvim_buf_set_text(
+                curr_task.buf,
+                curr_task.code_block["end"].row + #curr_task.output,
+                charnum,
+                curr_task.code_block["end"].row + #curr_task.output,
+                charnum,
+                -- true,
                 { line }
             )
         end,
@@ -143,7 +157,6 @@ module.private = {
 
         module.private.tasks[id] = {
             buf = vim.api.nvim_get_current_buf(),
-            header = {},
             output = {},
             interrupted = false,
             jobid = nil,
@@ -163,16 +176,30 @@ module.private = {
             return
         end
 
-        for _, line in ipairs(data) do
-            if line ~= "" then
-                if module.public.mode == "virtual" then
-                    table.insert(module.private.tasks[id].output, { { line, hl } })
-                    module.private.virtual.update(id)
-                else
-                    table.insert(module.private.tasks[id].output, line)
-                    module.private.normal.update(id, line)
-                end
+        local curr_task = module.private.tasks[id]
+        for i, line in ipairs(data) do
+          if i == 1 and #curr_task.output > 0 then -- continuation of previous chunk (this is how unbuffered jobs work in nvim)
+            local existing = curr_task.output[#curr_task.output]
+            if existing then
+              if module.public.mode == "virtual" then
+                local eline = existing[1][1]
+                curr_task.output[#curr_task.output][1][1] =  eline .. line
+                module.private.virtual.update(id)
+              else
+                curr_task.output[#curr_task.output] =  existing .. line
+                module.private.normal.update_line(id, line, #existing)
+              end
+            -- else something is wrong
             end
+          else
+            if module.public.mode == "virtual" then
+              table.insert(curr_task.output, { { line, hl } })
+              module.private.virtual.update(id)
+            else
+              table.insert(curr_task.output, line)
+              module.private.normal.update(id, line)
+            end
+          end
         end
     end,
 
@@ -197,22 +224,21 @@ module.private = {
 
             on_exit = function(_, data)
                 local exec_exit = string.format("#exec.exit %s %0.4fs", data, os.clock() - module.private.tasks[id].start)
+                local curr_task = module.private.tasks[id]
                 if module.public.mode == "virtual" then
-                    local curr_task = module.private.tasks[id]
                     table.insert(curr_task.output, 2, { { exec_exit, "Keyword" } })
                     table.insert(curr_task.output, { { "@end", "Keyword" } })
                     module.private.virtual.update(id)
                 else
-                    -- table.insert(module.private.tasks[id].output, "@end")
-                    -- table.insert(module.private.tasks[id].output, 3, d) <-- this didn't work, sadly. That's why I did nvim_buf_set_lines
-                    -- module.private.normal.update(id, "@end")
                     vim.api.nvim_buf_set_lines(
-                        module.private.tasks[id].buf,
-                        module.private.tasks[id].code_block["end"].row + 3,
-                        module.private.tasks[id].code_block["end"].row + 3,
+                        curr_task.buf,
+                        curr_task.code_block["end"].row + 3,
+                        curr_task.code_block["end"].row + 3,
                         true,
                         { exec_exit }
                     )
+                    table.insert(curr_task.output, { { "@end", "Keyword" } })
+                    module.private.normal.update(id, "@end")
                 end
 
                 spinner.shut(module.private.tasks[id].spinner, module.private.ns)
@@ -289,7 +315,7 @@ module.public = {
                 end
             end
             if name then
-              vim.notify(string.format("running code block %s", name))
+              vim.notify(string.format("running code block '%s'", name))
             else
               vim.notify("running unnamed code block")
             end
