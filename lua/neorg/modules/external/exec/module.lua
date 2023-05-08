@@ -70,14 +70,18 @@ module.private = {
         init = function(id)
             local curr_task = module.private.tasks[id]
             curr_task.spinner = spinner.start(curr_task, module.private.ns)
-
             -- overwrite it
             -- TODO locate block with treesitter instead
             if not vim.tbl_isempty(curr_task.output) then
+								local linecount = vim.api.nvim_buf_line_count(0)
+								local lastline = curr_task.code_block["end"].row + 1 + module.private.header + 1 + #curr_task.output + 1
+								if lastline > linecount then
+									lastline = linecount
+								end
                 vim.api.nvim_buf_set_lines(
                     curr_task.buf,
                     curr_task.code_block["end"].row + 1,
-                    curr_task.code_block["end"].row + 1 + module.private.header + 1 + #curr_task.output + 1,
+										lastline,
                     true,
                     {}
                 )
@@ -269,19 +273,25 @@ module.public = {
         if code_block.name == "code" then
             -- default is 'normal'
             module.public.mode = "normal"
+            local name
 
             local tags = module.public.current_node_carrover_tags()
             for tag, params in pairs(tags) do
                 local paramS = table.concat(params)
                 if tag == "exec.name" then
+                    name = paramS
                     -- vim.notify(params)
-                    vim.notify(string.format("code block name is %s", paramS))
                 elseif tag == "exec.render" then
                     -- vim.notify(string.format("result rendering is %s", paramS))
                     if paramS == "virtual" then
                         module.public.mode = "virtual"
                     end
                 end
+            end
+            if name then
+              vim.notify(string.format("running code block %s", name))
+            else
+              vim.notify("running unnamed code block")
             end
             module.private.tasks[id]["code_block"] = code_block
 
