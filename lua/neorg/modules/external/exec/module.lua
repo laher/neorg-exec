@@ -1,7 +1,7 @@
 ---@diagnostic disable: undefined-global
 require("neorg.modules.base")
 local spinner = require("neorg.modules.external.exec.spinner")
-
+local title = "external.exec"
 local module = neorg.modules.create("external.exec")
 module.setup = function()
     if vim.fn.isdirectory(module.public.tmpdir) == 0 then
@@ -15,7 +15,8 @@ module.load = function()
         exec = {
             args = 1,
             subcommands = {
-                block = { args = 0, name = "exec.block" },
+                code = { args = 0, name = "exec.code" },
+                buf = { args = 0, name = "exec.buf" },
                 hide = { args = 0, name = "exec.hide" },
                 materialize = { args = 0, name = "exec.materialize" },
             },
@@ -72,20 +73,24 @@ module.private = {
             local curr_task = module.private.tasks[id]
             curr_task.spinner = spinner.start(curr_task, module.private.ns)
             -- overwrite it
-            -- TODO locate block with treesitter instead
+            -- locate existing result block with treesitter and delete it
+            module.public.clear_next_result_tag(curr_task.buf)
+
+            -- local ns = p:next_named_sibling()
+
             if not vim.tbl_isempty(curr_task.output) then
-								local linecount = vim.api.nvim_buf_line_count(0)
-								local lastline = curr_task.code_block["end"].row + 1 + #curr_task.output + 1
-								if lastline > linecount then
-									lastline = linecount
-								end
-                vim.api.nvim_buf_set_lines(
-                    curr_task.buf,
-                    curr_task.code_block["end"].row + 1,
-										lastline,
-                    true,
-                    {}
-                )
+								-- local linecount = vim.api.nvim_buf_line_count(0)
+								-- local lastline = curr_task.code_block["end"].row + 1 + #curr_task.output + 1
+								-- if lastline > linecount then
+								-- 	lastline = linecount
+								-- end
+        --         vim.api.nvim_buf_set_lines(
+        --             curr_task.buf,
+        --             curr_task.code_block["end"].row + 1,
+								-- 		lastline,
+        --             true,
+        --             {}
+        --         )
                 -- initialise
                 curr_task.output = {}
             end
@@ -226,7 +231,7 @@ module.private = {
                 local exec_exit = string.format("#exec.exit %s %0.4fs", data, os.clock() - module.private.tasks[id].start)
                 local curr_task = module.private.tasks[id]
                 if module.public.mode == "virtual" then
-                    table.insert(curr_task.output, 2, { { exec_exit, "Keyword" } })
+                    table.insert(curr_task.output, 3, { { exec_exit, "Keyword" } })
                     table.insert(curr_task.output, { { "@end", "Keyword" } })
                     module.private.virtual.update(id)
                 else
@@ -261,12 +266,27 @@ module.public = {
         return p
     end,
 
-    current_node_info = function()
-        local p = module.public.current_node()
+    find_next_sibling = function(node, types)
+        local _node = node:next_sibling()
+
+        while _node do
+            if type(types) == "string" then
+                if _node:type():match(types) then
+                    return _node
+                end
+            elseif vim.tbl_contains(types, _node:type()) then
+                return _node
+            end
+
+            _node = _node:next_sibling()
+        end
+    end,
+
+    node_info = function(p)
         -- TODO: Add checks here
         local cb = module.required["core.integrations.treesitter"].get_tag_info(p, true)
         if not cb then
-            vim.notify("Not inside a code block!")
+            vim.notify("Not inside a tag!", "warn", {title = title})
             return
         end
         return cb
@@ -291,7 +311,7 @@ module.public = {
     end,
 
     base = function(id)
-        local code_block = module.public.current_node_info()
+        local code_block = module.public.node_info(module.public.current_node())
         if not code_block then
             return
         end
@@ -315,9 +335,9 @@ module.public = {
                 end
             end
             if name then
-              vim.notify(string.format("running code block '%s'", name))
+              vim.notify(string.format("running code block '%s'", name), "info", {title = title})
             else
-              vim.notify("running unnamed code block")
+              vim.notify("running unnamed code block", "info", {title = title})
             end
             module.private.tasks[id]["code_block"] = code_block
 
@@ -330,7 +350,7 @@ module.public = {
 
             local lang_cfg = module.config.public.lang_cmds[ft]
             if not lang_cfg then
-                vim.notify("Language not supported currently!")
+                vim.notify("Language not supported currently!", "error", {title = title})
                 return
             end
 
@@ -351,7 +371,8 @@ module.public = {
             local command = lang_cfg.cmd:gsub("${0}", module.private.tasks[id].temp_filename)
             module.private.spawn(id, command)
         elseif code_block.name == "result" then
-            vim.notify("This is a result block, not a code block. Look up to the code block!")
+            vim.notify("This is a result block, not a code block. Look up to the code block!", "warn", {title = title})
+
         end
     end,
 
@@ -359,6 +380,11 @@ module.public = {
         local id = module.private.init()
         module.public.base(id)
     end,
+
+    do_buf = function()
+      vim.notify("exec whole buffer not supported yet", "warn", {title = title})
+    end,
+
     hide = function()
         -- HACK: Duplication
         local cr, _ = unpack(vim.api.nvim_win_get_cursor(0))
@@ -378,6 +404,26 @@ module.public = {
             end
         end
     end,
+
+    clear_next_result_tag = function(buf)
+            local p = module.public.current_node()
+            local s = module.public.find_next_sibling(p, "^ranged_verbatim_tag$")
+
+            if s then
+              local sinf = module.public.node_info(s)
+              -- needs to be a result before any other rbt's
+              if sinf.name  == "result" then
+                vim.api.nvim_buf_set_lines(
+                  buf,
+                  sinf.start.row-1, -- assume headers
+                  sinf["end"].row+1, -- assume footer
+                  true,
+                  {}
+                )
+              end
+            end
+    end,
+
     materialize = function()
         local cr, _ = unpack(vim.api.nvim_win_get_cursor(0))
 
@@ -389,6 +435,7 @@ module.public = {
             if code_start <= cr and code_end >= cr then
                 local curr_task = module.private.tasks[id_idx]
 
+                -- clear virtual lines
                 vim.api.nvim_buf_set_extmark(
                     curr_task.buf,
                     module.private.ns,
@@ -396,6 +443,7 @@ module.public = {
                     0,
                     { id = id_idx, virt_lines = nil }
                 )
+                module.public.clear_next_result_tag(curr_task.buf)
 
                 local t = vim.tbl_map(function(line)
                     return line[1][1]
@@ -418,8 +466,10 @@ module.public = {
 }
 
 module.on_event = function(event)
-    if event.split_type[2] == "exec.block" then
+    if event.split_type[2] == "exec.code" then
         vim.schedule(module.public.do_block)
+    elseif event.split_type[2] == "exec.buf" then
+        vim.schedule(module.public.do_buf)
     elseif event.split_type[2] == "exec.hide" then
         vim.schedule(module.public.hide)
     elseif event.split_type[2] == "exec.materialize" then
@@ -429,7 +479,8 @@ end
 
 module.events.subscribed = {
     ["core.neorgcmd"] = {
-        ["exec.block"] = true,
+        ["exec.code"] = true,
+        ["exec.buf"] = true,
         ["exec.hide"] = true,
         ["exec.materialize"] = true,
     },
