@@ -88,33 +88,69 @@ You can install it through your favorite plugin manager:
 
 # Usage
 
-You can exec a code block with an ex command:
+Given a norg file containing a code block like this:
 
 ```
-:Neorg exec normal
+@code bash
+ print hello
+@end
 ```
 
- * `normal` writes the results directly into the file, below the code block.
- * There is also `virtual`, which renders the results into 'virtual text' instead.
-  * After running `virtual`, then `materialize` to write it to the file, or `hide` to delete the virtual text.
+You can `exec` the code block under the cursor with an ex command:
 
-Or you can bind a key like this:
+```
+:Neorg exec cursor
+```
+
+Or you can bind a key like this
+
 
 ```lua
-vim.keymap.set('n', '<C-c>', ':Neorg exec normal<CR>', {silent = true}) -- search file
+vim.keymap.set('n', '<localleader>x', ':Neorg exec cursor<CR>', {silent = true}) -- search file
 ```
 
-You can probably do it with `neorg_callbacks` but I haven't got there yet.
+_Note: `localleader` is like `leader` but intended more for specific filetypes, but you can use `leader` if you prefer)._
+
+## The result
+
+By default, the result will be written into the buffer, directly below the code tag's `@end` tag:
+
+```
+#result.start
+#result.exit 0 0.01s
+@result
+hello
+@end
+```
+
+## Tags to render the
+
+Provide some tags to specify how to run the code.
+
+```
+#exec.name helloworld
+#exec.render virtual
+@code bash
+ print hello norg
+@end
+```
+
+After running a code block with `virtual` rendering, you can use two other subcommands:
+ * `materialize` to write the virtual text to the file,
+ * or `hide` to delete the virtual text.
 
 
 # Planning
 
 ## Some bugs I noticed after importing
 
- * [ ] After an invocation fails, there's sometimes an index-out-of-bounds when you retry.
+ * [x] After an invocation fails, there's sometimes an index-out-of-bounds when you retry.
  * Rendering quirks:
-    * [ ] Results rendering can be a bit unpredictable. Sometimes it gets a bit mangled, sometimes it can duplicate the results section. Spinner is also a bit funky.
-    * [ ] `virtual` mode does some weird stuff affecting navigation around the file.
+    * [x] Results rendering can be a bit unpredictable. Sometimes it gets a bit mangled, sometimes it can duplicate the results section.
+        - I addressed a lot of the quirks by locating the @result block with treesitter.
+    * [ ] Spinner is also a bit funky.
+    * [x] `virtual` mode does some weird stuff affecting navigation around the file.
+        - seems better now. As good as it can be.
 
 ## I'd like to do
 

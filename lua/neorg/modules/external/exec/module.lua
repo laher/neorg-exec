@@ -15,7 +15,7 @@ module.load = function()
         exec = {
             args = 1,
             subcommands = {
-                code = { args = 0, name = "exec.code" },
+                cursor = { args = 0, name = "exec.cursor" },
                 buf = { args = 0, name = "exec.buf" },
                 hide = { args = 0, name = "exec.hide" },
                 materialize = { args = 0, name = "exec.materialize" },
@@ -376,11 +376,13 @@ module.public = {
         end
     end,
 
-    do_block = function()
+    -- TODO - all blocks in a section
+    do_code_block_under_cursor = function()
         local id = module.private.init()
         module.public.base(id)
     end,
 
+    -- TODO - all blocks in a buffer
     do_buf = function()
       vim.notify("exec whole buffer not supported yet", "warn", {title = title})
     end,
@@ -466,8 +468,8 @@ module.public = {
 }
 
 module.on_event = function(event)
-    if event.split_type[2] == "exec.code" then
-        vim.schedule(module.public.do_block)
+    if event.split_type[2] == "exec.cursor" then
+        vim.schedule(module.public.do_code_block_under_cursor)
     elseif event.split_type[2] == "exec.buf" then
         vim.schedule(module.public.do_buf)
     elseif event.split_type[2] == "exec.hide" then
@@ -479,7 +481,7 @@ end
 
 module.events.subscribed = {
     ["core.neorgcmd"] = {
-        ["exec.code"] = true,
+        ["exec.cursor"] = true,
         ["exec.buf"] = true,
         ["exec.hide"] = true,
         ["exec.materialize"] = true,
