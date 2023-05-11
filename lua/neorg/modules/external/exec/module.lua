@@ -4,8 +4,8 @@ local spinner = require("neorg.modules.external.exec.spinner")
 local title = "external.exec"
 local module = neorg.modules.create("external.exec")
 module.setup = function()
-    if vim.fn.isdirectory(module.public.tmpdir) == 0 then
-        vim.fn.mkdir(module.public.tmpdir, "p")
+    if vim.fn.isdirectory(module.private.tmpdir) == 0 then
+        vim.fn.mkdir(module.private.tmpdir, "p")
     end
     return { success = true, requires = { "core.neorgcmd", "core.integrations.treesitter" } }
 end
@@ -55,7 +55,6 @@ module.private = {
 
         update = function(id)
             local curr_task = module.private.tasks[id]
-
             vim.api.nvim_buf_set_extmark(
                 curr_task.buf,
                 module.private.ns,
@@ -66,15 +65,13 @@ module.private = {
         end,
     },
 
-    -- 3 lines to @result
-    header = 3,
     normal = {
         init = function(id)
             local curr_task = module.private.tasks[id]
             curr_task.spinner = spinner.start(curr_task, module.private.ns)
             -- overwrite it
             -- locate existing result block with treesitter and delete it
-            module.public.clear_next_result_tag(curr_task.buf)
+            module.private.clear_next_result_tag(curr_task.buf, curr_task.node)
 
             -- local ns = p:next_named_sibling()
 
@@ -143,7 +140,7 @@ module.private = {
         end,
     },
 
-    init = function()
+    init_cursor = function()
         -- IMP: check for existng marks and return if it exists.
         local cr, _ = unpack(vim.api.nvim_win_get_cursor(0))
 
@@ -157,7 +154,10 @@ module.private = {
                 return id_idx
             end
         end
+        return module.private.init_task()
+    end,
 
+    init_task = function()
         local id = vim.api.nvim_buf_set_extmark(0, module.private.ns, 0, 0, {})
 
         module.private.tasks[id] = {
@@ -166,6 +166,7 @@ module.private = {
             interrupted = false,
             jobid = nil,
             temp_filename = nil,
+            node = nil,
             code_block = {},
             spinner = nil,
             running = false,
@@ -186,7 +187,7 @@ module.private = {
           if i == 1 and #curr_task.output > 0 then -- continuation of previous chunk (this is how unbuffered jobs work in nvim)
             local existing = curr_task.output[#curr_task.output]
             if existing then
-              if module.public.mode == "virtual" then
+              if module.private.mode == "virtual" then
                 local eline = existing[1][1]
                 curr_task.output[#curr_task.output][1][1] =  eline .. line
                 module.private.virtual.update(id)
@@ -197,7 +198,7 @@ module.private = {
             -- else something is wrong
             end
           else
-            if module.public.mode == "virtual" then
+            if module.private.mode == "virtual" then
               table.insert(curr_task.output, { { line, hl } })
               module.private.virtual.update(id)
             else
@@ -209,7 +210,7 @@ module.private = {
     end,
 
     spawn = function(id, command)
-        local mode = module.public.mode
+        local mode = module.private.mode
 
         module.private[mode == "virtual" and "virtual" or "normal"].init(id)
 
@@ -228,9 +229,14 @@ module.private = {
             end,
 
             on_exit = function(_, data)
+                if data == 0 then
+                  vim.notify("exec - success", "info", {title = title})
+                else
+                  vim.notify(string.format("exec - non-zero result! %d", data), "warn", {title = title})
+                end
                 local exec_exit = string.format("#exec.exit %s %0.4fs", data, os.clock() - module.private.tasks[id].start)
                 local curr_task = module.private.tasks[id]
-                if module.public.mode == "virtual" then
+                if module.private.mode == "virtual" then
                     table.insert(curr_task.output, 3, { { exec_exit, "Keyword" } })
                     table.insert(curr_task.output, { { "@end", "Keyword" } })
                     module.private.virtual.update(id)
@@ -249,12 +255,10 @@ module.private = {
                 spinner.shut(module.private.tasks[id].spinner, module.private.ns)
                 vim.fn.delete(module.private.tasks[id].temp_filename)
                 module.private.tasks[id].running = false
+                module.private.take_from_queue() -- process any more work to do
             end,
         })
     end,
-}
-
-module.public = {
     tmpdir = "/tmp/neorg-exec/", -- TODO use io.tmpname? for portability
     -- mode = "normal",
     mode = nil,
@@ -282,6 +286,65 @@ module.public = {
         end
     end,
 
+    find_all_code_nodes = function()
+        local buffer = 0
+        local parsed_document_metadata = module.required["core.integrations.treesitter"].get_document_metadata(buffer)
+
+        if vim.tbl_isempty(parsed_document_metadata) or not parsed_document_metadata.tangle then
+            parsed_document_metadata = {
+                exec = {},
+            }
+        end
+
+        local document_root = module.required["core.integrations.treesitter"].get_document_root(buffer)
+
+        local options = {
+            languages = {},
+            scope = parsed_document_metadata.exec.scope or "all", -- "all" | "tagged" | "main"
+        }
+
+
+        local query_str = neorg.lib.match(options.scope)({
+            _ = [[
+                (ranged_verbatim_tag
+                    name: (tag_name) @_name
+                    (#eq? @_name "code")
+                    (tag_parameters
+                       .
+                       (tag_param) @_language)) @tag
+            ]],
+            tagged = [[
+                (ranged_verbatim_tag
+                    [(strong_carryover_set
+                        (strong_carryover
+                          name: (tag_name) @_strong_carryover_tag_name
+                          (#eq? @_strong_carryover_tag_name "exec.name")))
+                     (weak_carryover_set
+                        (weak_carryover
+                          name: (tag_name) @_weak_carryover_tag_name
+                          (#eq? @_weak_carryover_tag_name "exec.name")))]
+                  name: (tag_name) @_name
+                  (#eq? @_name "code")
+                  (tag_parameters
+                    .
+                    (tag_param) @_language)) @tag
+            ]],
+        })
+
+
+        local query = neorg.utils.ts_parse_query("norg", query_str)
+        local nodes = {}
+
+        for id, node in query:iter_captures(document_root, buffer, 0, -1) do
+            local capture = query.captures[id]
+             if capture == "tag" then
+               table.insert(nodes, node)
+             end
+        end
+        return nodes
+
+    end,
+
     node_info = function(p)
         -- TODO: Add checks here
         local cb = module.required["core.integrations.treesitter"].get_tag_info(p, true)
@@ -292,8 +355,7 @@ module.public = {
         return cb
     end,
 
-    current_node_carrover_tags = function()
-        local p = module.public.current_node()
+    node_carrover_tags = function(p)
         local tags = {}
         --local p = p:prev_named_sibling():prev_named_sibling()
         for child, _ in p:iter_children() do
@@ -310,18 +372,14 @@ module.public = {
         return tags
     end,
 
-    base = function(id)
-        local code_block = module.public.node_info(module.public.current_node())
-        if not code_block then
-            return
-        end
+    base = function(id, node, node_info)
 
-        if code_block.name == "code" then
+        if node_info.name == "code" then
             -- default is 'normal'
-            module.public.mode = "normal"
+            module.private.mode = "normal"
             local name
 
-            local tags = module.public.current_node_carrover_tags()
+            local tags = module.private.node_carrover_tags(node)
             for tag, params in pairs(tags) do
                 local paramS = table.concat(params)
                 if tag == "exec.name" then
@@ -330,7 +388,7 @@ module.public = {
                 elseif tag == "exec.render" then
                     -- vim.notify(string.format("result rendering is %s", paramS))
                     if paramS == "virtual" then
-                        module.public.mode = "virtual"
+                        module.private.mode = "virtual"
                     end
                 end
             end
@@ -339,14 +397,16 @@ module.public = {
             else
               vim.notify("running unnamed code block", "info", {title = title})
             end
-            module.private.tasks[id]["code_block"] = code_block
+            module.private.tasks[id]["code_block"] = node_info
+            module.private.tasks[id]["node"] = node
 
             -- FIX: temp fix remove this!
-            code_block["parameters"] = vim.split(code_block["parameters"][1], " ")
-            local ft = code_block.parameters[1]
+            -- Amir: I wonder what this fix was for
+            node_info["parameters"] = vim.split(node_info["parameters"][1], " ")
+            local ft = node_info.parameters[1]
 
             -- TODO - use io.tmpfile() / io.tmpname()?
-            module.private.tasks[id].temp_filename = module.public.tmpdir .. id .. "." .. ft
+            module.private.tasks[id].temp_filename = module.private.tmpdir .. id .. "." .. ft
 
             local lang_cfg = module.config.public.lang_cmds[ft]
             if not lang_cfg then
@@ -360,8 +420,8 @@ module.public = {
                 return
             end
 
-            local file_content = table.concat(code_block.content, "\n")
-            if not vim.tbl_contains(code_block.parameters, ":main") and lang_cfg.type == "compiled" then
+            local file_content = table.concat(node_info.content, "\n")
+            if not vim.tbl_contains(node_info.parameters, ":main") and lang_cfg.type == "compiled" then
                 local c = lang_cfg.main_wrap
                 file_content = c:gsub("${1}", file_content)
             end
@@ -370,49 +430,36 @@ module.public = {
 
             local command = lang_cfg.cmd:gsub("${0}", module.private.tasks[id].temp_filename)
             module.private.spawn(id, command)
-        elseif code_block.name == "result" then
+        elseif node_info.name == "result" then
             vim.notify("This is a result block, not a code block. Look up to the code block!", "warn", {title = title})
-
+        else
+            vim.notify(string.format("This is not a code block. %s", node_info.name), "warn", {title = title})
         end
     end,
 
-    -- TODO - all blocks in a section
-    do_code_block_under_cursor = function()
-        local id = module.private.init()
-        module.public.base(id)
+    queue = {
+
+    },
+
+
+    take_from_queue = function()
+      if #module.private.queue > 0 then
+        local code_blocks = module.private.find_all_code_nodes()
+        local current_item = table.remove(module.private.queue, 1)
+        -- TODO
+        -- if current_item[2] == "cursor" then find blocks within the cursor's object
+        local code_block = code_blocks[current_item[1]]
+        local id = module.private.init_task()
+        local code_block_info = module.private.node_info(code_block)
+        module.private.base(id, code_block, code_block_info)
+      end
     end,
 
-    -- TODO - all blocks in a buffer
-    do_buf = function()
-      vim.notify("exec whole buffer not supported yet", "warn", {title = title})
-    end,
-
-    hide = function()
-        -- HACK: Duplication
-        local cr, _ = unpack(vim.api.nvim_win_get_cursor(0))
-
-        for id_idx, id_cfg in pairs(module.private.tasks) do
-            local code_start, code_end = id_cfg.code_block["start"].row + 1, id_cfg.code_block["end"].row + 1
-
-            if code_start <= cr and code_end >= cr then
-                if module.public.mode == "virtual" then
-                    vim.api.nvim_buf_del_extmark(0, module.private.ns, id_idx)
-                else
-                    vim.api.nvim_buf_set_lines(0, code_end, code_end + #id_cfg["output"], false, {})
-                end
-
-                module.private.tasks[id_idx] = nil
-                return
-            end
-        end
-    end,
-
-    clear_next_result_tag = function(buf)
-            local p = module.public.current_node()
-            local s = module.public.find_next_sibling(p, "^ranged_verbatim_tag$")
+    clear_next_result_tag = function(buf, p)
+            local s = module.private.find_next_sibling(p, "^ranged_verbatim_tag$")
 
             if s then
-              local sinf = module.public.node_info(s)
+              local sinf = module.private.node_info(s)
               -- needs to be a result before any other rbt's
               if sinf.name  == "result" then
                 vim.api.nvim_buf_set_lines(
@@ -424,6 +471,52 @@ module.public = {
                 )
               end
             end
+    end,
+
+}
+
+module.public = {
+    -- TODO - all blocks in a section
+    do_code_block_under_cursor = function()
+        local id = module.private.init_cursor()
+        local code_block = module.private.current_node()
+        local code_block_info = module.private.node_info(code_block)
+        if not code_block_info then
+            return
+        end
+        module.private.base(id, code_block, code_block_info)
+    end,
+
+    -- TODO - make this efficient
+    do_buf = function()
+      -- we really just need the count
+      local code_blocks = module.private.find_all_code_nodes()
+      for i, _ in ipairs(code_blocks) do
+        table.insert(module.private.queue, {i, "buf"})
+      end
+      module.private.take_from_queue()
+      --vim.notify("exec whole buffer not supported yet", "warn", {title = title})
+    end,
+
+
+    hide = function()
+        -- HACK: Duplication
+        local cr, _ = unpack(vim.api.nvim_win_get_cursor(0))
+
+        for id_idx, id_cfg in pairs(module.private.tasks) do
+            local code_start, code_end = id_cfg.code_block["start"].row + 1, id_cfg.code_block["end"].row + 1
+
+            if code_start <= cr and code_end >= cr then
+                if module.private.mode == "virtual" then
+                    vim.api.nvim_buf_del_extmark(0, module.private.ns, id_idx)
+                else
+                    vim.api.nvim_buf_set_lines(0, code_end, code_end + #id_cfg["output"], false, {})
+                end
+
+                module.private.tasks[id_idx] = nil
+                return
+            end
+        end
     end,
 
     materialize = function()
@@ -445,7 +538,7 @@ module.public = {
                     0,
                     { id = id_idx, virt_lines = nil }
                 )
-                module.public.clear_next_result_tag(curr_task.buf)
+                module.private.clear_next_result_tag(curr_task.buf, curr_task.node)
 
                 local t = vim.tbl_map(function(line)
                     return line[1][1]
@@ -461,7 +554,7 @@ module.public = {
                     )
                 end
 
-                module.public.mode = "normal"
+                module.private.mode = "normal"
             end
         end
     end,
