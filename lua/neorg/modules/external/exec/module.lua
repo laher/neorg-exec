@@ -32,6 +32,13 @@ module.private = {
     id = nil,
     running = false,
   },
+  -- Single-threaded: use a 'queue' to work on tasks sequentially.
+  -- We don't want to write to multiple file locations at once, that would be mad
+  queue = {
+
+  },
+  tmpdir = "/tmp/neorg-exec/", -- TODO use io.tmpname? for portability
+  mode = "normal", -- output mode
 
   ns = vim.api.nvim_create_namespace("exec"),
 
@@ -127,17 +134,17 @@ module.private = {
 
   init_cursor = function()
     -- IMP: check for existng marks and return if it exists.
-    local cr, _ = unpack(vim.api.nvim_win_get_cursor(0))
-
-    -- if id_cfg.code_block then
-    --   print()
-    -- end
     if module.private.task.running then
       local code_start, code_end = module.private.task.code_block["start"].row + 1, module.private.task.code_block["end"].row + 1
+      local cr, _ = unpack(vim.api.nvim_win_get_cursor(0))
 
-      if code_start <= cr and code_end >= cr then
-        return module.private.task.id
+      if code_start > cr or code_end < cr then
+        nvim.notify("Another task is already runnig.", 'warn')
+      else
+        nvim.notify("This task is already running. Hold on.", 'warn')
+        -- TODO: what to do? still run it?
       end
+      return false
     end
     return module.private.init_task()
   end,
@@ -145,8 +152,8 @@ module.private = {
   init_task = function()
     if module.private.task.running then
       -- for a one-off task, just exit. pls try later
-      vim.notify('task already running', 'warn')
-      return nil
+      vim.notify('A task already is already running', 'warn')
+      return false
     end
     local id = vim.api.nvim_buf_set_extmark(0, module.private.ns, 0, 0, {})
 
@@ -166,7 +173,7 @@ module.private = {
       charc = 0,
     }
 
-    return id
+    return true
   end,
 
   handle_lines = function(data, hl)
@@ -206,7 +213,7 @@ module.private = {
   spawn = function(command)
     local mode = module.private.mode
 
-    module.private[mode == "virtual" and "virtual" or "normal"].init(id)
+    module.private[mode == "virtual" and "virtual" or "normal"].init()
 
     module.private.task.running = true
     module.private.task.start = os.clock()
@@ -252,9 +259,6 @@ module.private = {
       end,
     })
   end,
-  tmpdir = "/tmp/neorg-exec/", -- TODO use io.tmpname? for portability
-  -- mode = "normal",
-  mode = nil,
 
   current_node = function()
     local ts = module.required["core.integrations.treesitter"].get_ts_utils()
@@ -365,7 +369,7 @@ module.private = {
     return tags
   end,
 
-  base = function(id, node, node_info)
+  base = function(node, node_info)
 
     if node_info.name == "code" then
       -- default is 'normal'
@@ -430,21 +434,22 @@ module.private = {
     end
   end,
 
-  queue = {
-
-  },
-
 
   take_from_queue = function()
     if #module.private.queue > 0 then
+      if not module.private.task.running then
+        -- let that task schedule the next
+        return false
+      end
       local code_blocks = module.private.find_all_code_nodes()
       local current_item = table.remove(module.private.queue, 1)
       -- TODO
       -- if current_item[2] == "cursor" then find blocks within the cursor's object
       local code_block = code_blocks[current_item[1]]
-      local id = module.private.init_task()
-      local code_block_info = module.private.node_info(code_block)
-      module.private.base(id, code_block, code_block_info)
+      if module.private.init_task() then
+        local code_block_info = module.private.node_info(code_block)
+        module.private.base(code_block, code_block_info)
+      end
     end
   end,
 
@@ -471,13 +476,14 @@ module.private = {
 module.public = {
   -- TODO - all blocks in a section
   do_code_block_under_cursor = function()
-    local id = module.private.init_cursor()
-    local code_block = module.private.current_node()
-    local code_block_info = module.private.node_info(code_block)
-    if not code_block_info then
-      return
+    if module.private.init_cursor() then
+      local code_block = module.private.current_node()
+      local code_block_info = module.private.node_info(code_block)
+      if not code_block_info then
+        return
+      end
+      module.private.base(code_block, code_block_info)
     end
-    module.private.base(id, code_block, code_block_info)
   end,
 
   -- TODO - make this efficient

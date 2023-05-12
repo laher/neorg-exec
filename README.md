@@ -155,10 +155,13 @@ After running a code block with `virtual` rendering, you can use two other subco
 ## I'd like to do
 
  * Much of the original PR checklist - see below
+ * Scheduling:
+    * [ ] One queue (try plenary.async), one consumer. Single thread executing code.
+    * [ ] Usually one session & one process at a time, but support multiple workers for 'session' support a la org-mode
  * UI:
     * [x] ~~Render 'virtual lines' into a popup instead of the buffer.~~ Doesn't suit multiple blocks
     * [ ] Maybe spinner could go into the gutter.
-    * [ ] output handling: 'replace' @result block (instead of 'prepend' another @result block)
+    * [x] output handling: 'replace' @result block (instead of 'prepend' another @result block)
  * Code block tagging, for indicating _how to run_ the code.
     * Similar to org-mode's tagging for [code block environment](https://orgmode.org/manual/Environment-of-a-Code-Block.html) and [result handling](https://orgmode.org/manual/Results-of-Evaluation.html).
     * Options:
@@ -166,29 +169,57 @@ After running a code block with `virtual` rendering, you can use two other subco
         * [x] Could instead be individual tags per item <- This is @vhyrro's preference.
         * [ ] ~~Or, possibly even merge it into the `@code` line ... `@code bash cache=5m`~~
     * [ ] cli args, env support.
+      * [ ] try plenary.job for easy env support. Maybe there are some other benefits too.
     * [ ] Caching - similar to org-mode but with cache timeout (plus the hash in the result block)
-    * [ ] Named blocks.
+    * [x] Named blocks.
     * [ ] Handling options for stderr, etc. Needs thought - do we want nested tags?
     * [ ] Output type? e.g. `json`. Then results could be syntax-hightlighted just like code blocks.
  * Results
     * [x] Render in a ranged tag? like `@result\ndone...\n@end` (or optionally `|result\n** some norg-formatted output\n|end`)
       * verbatim only, for now. It seems like Macros could fulfil generation of norg markup <- @vhyrro's recommendation.
+        * [ ] `render=file filename.out`
+        * [ ] `render=silent`
+        * [ ] What to do about stderr vs stdout? prefixes?
     * [x] Tag with start time? like `#exec.start 2020-01-01T00:11:22.123Z`
     * [ ] Then maybe at the end ... (insert above the @result tag)
       * [x] duration - `#exec.duration_s 1.23s`
-      * [ ] exit code
+      * [x] exit code
+
  * [ ] A way to assess whether a compiler/interpreter is available & feasible. e.g. `type -p gcc`. Seems related to cross-platform support.
  * [ ] Run multiple blocks at once, within a node, etc. Caching, env variables, macros?
+      * [x] whole buffer
  * [ ] Hopefully, tangle integration.
  * [ ] file-level tagging (similar to `@code` block tagging)
  * Subcommand changes:
    * [x] rename `view` to `virtual`.
-   * [ ] Restructure, maybe: `:Neorg exec block [normal|virtual]` `:Neorg exec buf [normal|virtual]` ... not sure yet how to make this extendable.
+   * [x] Restructure, maybe: `:Neorg exec cursor [normal|virtual]` `:Neorg exec buf [normal|virtual]` ... not sure yet how to make this extendable.
+     * [ ] Cursor mode to support 'all code blocks within current norg object'
  * [ ] Macro support:
     * [ ] `.exec.call named-block arg arg`
     * [ ] `.exec.result named-result`
     * [ ] some way to address code blocks across files
     * [ ] some way to chain things together? IDK if this is a good idea, but maybe worth thinking about.
+ * virtual-mode: keep or not keep?
+    * Options:
+      * [ ] Keep
+         - it's kinda cool.
+         - maybe more suitable for some use cases? like literate programming? Hard to assess
+      * [ ] Not keep
+         - memory hungry (we need to keep all the lines in a table aswell as the virtual lines).
+         - The code is a bit more complicated & stateful because of this.
+         - Workflow is a bit non-obvious.
+         -  we could retain virtual lines for stats? and progress reporting?
+ * Security:
+    * Safety options:
+        * [ ] don't run multiple without confirm?
+        * [ ] chroot jails?
+        * [ ] docker-based runners?
+        * [ ] memory limits, timeouts, etc?
+        * [ ] killing processes?
+        * [ ] exec.none (could be the default, maybe)
+ * Integration with `core.tangle`:
+    * [ ] Respect `core.tangle` tags somehow? Or at least follow the naming conventions.
+    * [ ] Use `core.tangle` to pre-process code blocks? Is that even feasible?
 
 ### Planning - some examples
 
@@ -204,10 +235,8 @@ Some examples of what I think a nice tagged code block + results block could loo
 ls
 @end
 
-#exec.start 2020-01-01T00:11:22.123Z
-#exec.codehash 0000deadbeef1234
-#exec.duration 1.23s
-#exec.exitcode 0
+#exec.start 2020-01-01T00:11:22.123Z hash=0000deadbeef1234
+#exec.exit 0 1.23s
 @result
 dir/
 file1.txt
@@ -224,10 +253,8 @@ file2.txt
 ./generate-todos-from-gmail.sh
 @end
 
-#exec.start time 2020-01-01T00:11:22.123Z
-#exec.codehash 0000deadbeef1234
-#exec.duration 1.23s
-#exec.exitcode 0
+#exec.start 2020-01-01T00:11:22.123Z hash=0000deadbeef1234
+#exec.exit 0 1.23s
 |result
 *** todos
  - (?) Reply to daily report
