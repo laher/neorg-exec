@@ -88,7 +88,8 @@ module.private = {
       if not vim.tbl_isempty(curr_task.output) then
         curr_task.output = {}
       end
-      local output = { "", string.format("%s",os.date("#exec.start %Y-%m-%dT%H:%M:%S%Z", os.time())), "@result", "" }
+      -- first line is ignored
+      local output = { "", "", string.format("%s",os.date("#exec.start %Y-%m-%dT%H:%M:%S%Z", os.time())), "@result", "" }
 
       module.private.normal.append(output)
       -- table.insert(curr_task.output, "")
@@ -109,18 +110,32 @@ module.private = {
 
     append = function(lines)
       if #lines < 1 then
+        -- vim.notify('nothing')
+        -- nothing. unexpected!
+        return
+      end
+      if #lines == 1 and lines[0] == '' then
+        -- vim.notify('eof')
+        -- EOF
         return
       end
       local curr_task = module.private.task
-      vim.api.nvim_buf_set_text(
-      curr_task.buf,
-      curr_task.code_block["end"].row + curr_task.linec,
-      curr_task.charc,
-      curr_task.code_block["end"].row + curr_task.linec,
-      curr_task.charc,
-      {lines[1]}
-        )
-      if #lines > 1 then
+      -- vim.notify(string.format('rcv %d lines', #lines))
+      -- first line should be joined with existing last line if it's non-empty
+      local first_line = table.remove(lines, 1)
+      if first_line ~= '' then
+        vim.api.nvim_buf_set_text(
+        curr_task.buf,
+        curr_task.code_block["end"].row + curr_task.linec,
+        curr_task.charc,
+        curr_task.code_block["end"].row + curr_task.linec,
+        curr_task.charc,
+        {first_line}
+          )
+        curr_task.linec = curr_task.linec + 1
+      end
+      -- other lines ... just append at once
+      if #lines > 0 then
           vim.api.nvim_buf_set_lines(
               curr_task.buf,
               curr_task.code_block["end"].row + curr_task.linec + 1,
@@ -128,10 +143,12 @@ module.private = {
               true,
               lines
           )
+        -- length of last line
+        curr_task.charc = #lines[#lines]
+      else
+        curr_task.charc = curr_task.charc + #first_line
       end
       curr_task.linec = curr_task.linec + #lines
-      -- length of last line
-      curr_task.charc = #lines[#lines]
     end,
   },
 
@@ -252,6 +269,9 @@ module.private = {
           table.insert(curr_task.output, { { "@end", "Keyword" } })
           module.private.virtual.update()
         else
+          -- always include an extra prefix line to indicate newline
+          module.private.normal.append({"", "@end", ""})
+          -- insert directly
           vim.api.nvim_buf_set_lines(
           curr_task.buf,
           curr_task.code_block["end"].row + 3,
@@ -259,7 +279,6 @@ module.private = {
           true,
           { exec_exit }
           )
-          module.private.normal.append({"","@end"}) -- include an extra line to indicate newline
         end
 
         spinner.shut(module.private.task.spinner, module.private.ns)

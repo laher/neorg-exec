@@ -30,6 +30,7 @@ end
 
 local do_task = function(task)
 
+  -- TODO when doing sessions
   -- session_identifier is only set when it's a session id
   -- the task needs to recalculate where the hell the block is now (maybe location has changed)
   -- and then defines runtime info for execution
@@ -38,10 +39,7 @@ local do_task = function(task)
   -- if worker then
   --   worker.execute(task, rt_info)
   -- end
-  -- vim.notify('recieved task yay')
-  -- oops for now it's super dumb
 
---  local a = require'plenary.async'
   local tx, rx = a.control.channel.oneshot()
   task.do_task(task, tx)
   return rx
@@ -60,7 +58,7 @@ M.start = function()
         -- print('received:', task)
         local done = do_task(task)
         done() -- block
-        vim.notify('task complete. next')
+        -- vim.notify('task complete. next')
       end
     end)
 end
