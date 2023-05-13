@@ -1,8 +1,10 @@
 ---@diagnostic disable: undefined-global
 require("neorg.modules.base")
 local spinner = require("neorg.modules.external.exec.spinner")
+local scheduler = require("neorg.modules.external.exec.scheduler")
 local title = "external.exec"
 local module = neorg.modules.create("external.exec")
+-- local Job = require'plenary.job'
 module.setup = function()
   if vim.fn.isdirectory(module.private.tmpdir) == 0 then
     vim.fn.mkdir(module.private.tmpdir, "p")
@@ -11,6 +13,7 @@ module.setup = function()
 end
 
 module.load = function()
+  scheduler.start()
   module.required["core.neorgcmd"].add_commands_from_table({
     exec = {
       args = 1,
@@ -132,22 +135,23 @@ module.private = {
     end,
   },
 
-  init_cursor = function()
-    -- IMP: check for existng marks and return if it exists.
-    if module.private.task.running then
-      local code_start, code_end = module.private.task.code_block["start"].row + 1, module.private.task.code_block["end"].row + 1
-      local cr, _ = unpack(vim.api.nvim_win_get_cursor(0))
-
-      if code_start > cr or code_end < cr then
-        nvim.notify("Another task is already runnig.", 'warn')
-      else
-        nvim.notify("This task is already running. Hold on.", 'warn')
-        -- TODO: what to do? still run it?
-      end
-      return false
-    end
-    return module.private.init_task()
-  end,
+  -- TODO revisit this? checking if it's already running - debounce?
+  -- init_cursor = function()
+  --   -- IMP: check for existng marks and return if it exists.
+  --   if module.private.task.running then
+  --     local code_start, code_end = module.private.task.code_block["start"].row + 1, module.private.task.code_block["end"].row + 1
+  --     local cr, _ = unpack(vim.api.nvim_win_get_cursor(0))
+  --
+  --     if code_start > cr or code_end < cr then
+  --       nvim.notify("Another task is already runnig.", 'warn')
+  --     else
+  --       nvim.notify("This task is already running. Hold on.", 'warn')
+  --       -- TODO: what to do? still run it?
+  --     end
+  --     return false
+  --   end
+  --   return module.private.init_task()
+  -- end,
 
   init_task = function()
     if module.private.task.running then
@@ -200,23 +204,29 @@ module.private = {
       end
     else
       module.private.normal.append(data)
-      -- for i, line in ipairs(data) do
-      --   if i > 1 or curr_task.linec == 0 then -- continuation of previous chunk (this is how unbuffered jobs work in nvim)
-      --   -- use charc from previous batch
-      --     curr_task.charc = 0
-      --   end
-      --   module.private.normal.append({line})
-      -- end
     end
   end,
 
-  spawn = function(command)
+  spawn = function(command, done)
     local mode = module.private.mode
 
     module.private[mode == "virtual" and "virtual" or "normal"].init()
 
     module.private.task.running = true
     module.private.task.start = os.clock()
+
+    -- TODO: move to plenary-job?
+    -- Job:new({
+    --   command = 'rg',
+    --   args = { '--files' },
+    --   cwd = '/usr/bin',
+    --   env = { ['a'] = 'b' },
+    --   on_exit = function(j, return_val)
+    --     print(return_val)
+    --     print(j:result())
+    --   end,
+    -- }):sync()
+
     module.private.task.jobid = vim.fn.jobstart(command, {
       stdout_buffered = false,
 
@@ -255,7 +265,8 @@ module.private = {
         spinner.shut(module.private.task.spinner, module.private.ns)
         vim.fn.delete(module.private.task.temp_filename)
         module.private.task.running = false
-        module.private.take_from_queue() -- process any more work to do
+
+        done()
       end,
     })
   end,
@@ -369,7 +380,7 @@ module.private = {
     return tags
   end,
 
-  base = function(node, node_info)
+  do_run_block = function(node, node_info, tx)
 
     if node_info.name == "code" then
       -- default is 'normal'
@@ -426,7 +437,7 @@ module.private = {
       file:close()
 
       local command = lang_cfg.cmd:gsub("${0}", module.private.task.temp_filename)
-      module.private.spawn(command)
+      module.private.spawn(command, tx)
     elseif node_info.name == "result" then
       vim.notify("This is a result block, not a code block. Look up to the code block!", "warn", {title = title})
     else
@@ -434,23 +445,15 @@ module.private = {
     end
   end,
 
-
-  take_from_queue = function()
-    if #module.private.queue > 0 then
-      if not module.private.task.running then
-        -- let that task schedule the next
-        return false
-      end
+  do_task = function(task, tx)
       local code_blocks = module.private.find_all_code_nodes()
-      local current_item = table.remove(module.private.queue, 1)
       -- TODO
       -- if current_item[2] == "cursor" then find blocks within the cursor's object
-      local code_block = code_blocks[current_item[1]]
+      local code_block = code_blocks[task.blocknum]
       if module.private.init_task() then
         local code_block_info = module.private.node_info(code_block)
-        module.private.base(code_block, code_block_info)
+        module.private.do_run_block(code_block, code_block_info, tx)
       end
-    end
   end,
 
   clear_next_result_tag = function(buf, p)
@@ -476,28 +479,55 @@ module.private = {
 module.public = {
   -- TODO - all blocks in a section
   do_code_block_under_cursor = function()
-    if module.private.init_cursor() then
-      local code_block = module.private.current_node()
-      local code_block_info = module.private.node_info(code_block)
-      if not code_block_info then
-        return
+    -- NOTE this is involves extra pass in treesitter before going to the scheduler
+    -- It needs to calculate which block it is,
+    -- in case another block is already running & the line number may change
+    local code_blocks = module.private.find_all_code_nodes()
+    local my_block = module.private.current_node()
+    for i, doc_block in ipairs(code_blocks) do
+      if my_block == doc_block then
+        -- vim.notify('found a match')
+        scheduler.enqueue({
+          scope = 'buf',
+          blocknum = i,
+          do_task = module.private.do_task,
+        })
       end
-      module.private.base(code_block, code_block_info)
     end
+    -- if module.private.init_cursor() then
+    --   local code_block = module.private.current_node()
+    --   local code_block_info = module.private.node_info(code_block)
+    --   if not code_block_info then
+    --     return
+    --   end
+    --   module.private.do_run_block(code_block, code_block_info)
+    -- end
   end,
 
-  -- TODO - make this efficient
   do_buf = function()
-    -- we really just need the count
     local code_blocks = module.private.find_all_code_nodes()
     for i, _ in ipairs(code_blocks) do
-      table.insert(module.private.queue, {i, "buf"})
+    -- We really just need the index of each block within the scope.
+    -- After a block completes, the next block needs to be found all over again
+      scheduler.enqueue({
+        scope = 'buf',
+        blocknum = i,
+        do_task = module.private.do_task})
+      -- TODO maybe like this
+      -- ({
+      --   type = 'buf',
+      --   bufno = 0,
+      --   index = i,
+      --   do_task = module.private.do_task
+      -- })
+--      table.insert(module.private.queue, {i, "buf"})
     end
-    module.private.take_from_queue()
+  --  module.private.take_from_queue()
     --vim.notify("exec whole buffer not supported yet", "warn", {title = title})
   end,
 
 
+  -- TODO: find *all* virtmarks and hide them. Track them separately to tasks
   hide = function()
     -- HACK: Duplication
     local cr, _ = unpack(vim.api.nvim_win_get_cursor(0))
@@ -518,6 +548,7 @@ module.public = {
     end
   end,
 
+  -- TODO: find *all* virtmarks and materialize them. Track them separately to tasks
   materialize = function()
     local cr, _ = unpack(vim.api.nvim_win_get_cursor(0))
 
