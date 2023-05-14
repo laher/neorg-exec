@@ -321,24 +321,14 @@ module.private = {
 
   contained_code_blocks = function()
     local buffer = 0
-    local ts = module.required["core.integrations.treesitter"].get_ts_utils()
-    local node = ts.get_node_at_cursor(buffer, true)
+    -- local ts = module.required["core.integrations.treesitter"].get_ts_utils()
+    -- local node = ts.get_node_at_cursor(buffer, true)
 
-    -- Ech - a hack. if youre on a heading, it says you're in a heading_prefix or paragraph_segment.
-    -- if you're randomly inbetween some blocks, it says you're in a heading
-    if (node:type():match("^heading%d_prefix$") or node:type() == "paragraph_segment") and node:parent():type():match("^heading%d$") then
-      -- ok
-      -- strangely when you are on a heading it matches the heading-prefix or paragraph-segment
-      -- node = module.required["core.integrations.treesitter"].find_parent(node, "^heading%d$")
-      node = node:parent()
-      return module.private.find_code_blocks_for_node(buffer, node)
-    else
-      -- not a heading
-      vim.notify("not inside a code block or on a heading", "warn", {title = title})
-    end
+    local lineNum = vim.api.nvim_win_get_cursor(0)[1]
+    local node = module.required["core.integrations.treesitter"].get_first_node_on_line(buffer, lineNum-1, {})
+    -- vim.notify(string.format("%s", node))
 
-      -- vim.notify(node:type())
-      -- vim.notify(node:parent():type())
+    return module.private.find_code_blocks_for_node(buffer, node)
   end,
 
   find_code_blocks_for_node = function(buffer, root)
@@ -543,6 +533,9 @@ module.public = {
       end
     else
       local my_blocks = module.private.contained_code_blocks()
+      if not my_blocks or #my_blocks == 0 then
+        vim.notify(string.format("This is not a code block (or a heading containing code blocks)"), "warn", {title = title})
+      end
       for i, _ in ipairs(my_blocks) do
           -- vim.notify('found a match inside current block')
           scheduler.enqueue({
