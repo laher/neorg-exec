@@ -258,9 +258,9 @@ module.private = {
 
       on_exit = function(_, data)
         if data == 0 then
-          vim.notify("exec - success", "info", {title = title})
+          vim.notify("exit - success", "info", {title = title})
         else
-          vim.notify(string.format("exec - non-zero result! %d", data), "warn", {title = title})
+          vim.notify(string.format("exit - non-zero result! %d", data), "warn", {title = title})
         end
         local exec_exit = string.format("#exec.exit %s %0.4fs", data, os.clock() - module.private.task.start)
         local curr_task = module.private.task
@@ -290,7 +290,7 @@ module.private = {
     })
   end,
 
-  current_node = function()
+  current_code_block = function()
     local ts = module.required["core.integrations.treesitter"].get_ts_utils()
     local node = ts.get_node_at_cursor(0, true)
     local p = module.required["core.integrations.treesitter"].find_parent(node, "^ranged_verbatim_tag$")
@@ -313,8 +313,35 @@ module.private = {
     end
   end,
 
-  find_all_code_nodes = function()
+  find_all_code_blocks = function()
     local buffer = 0
+    local document_root = module.required["core.integrations.treesitter"].get_document_root(buffer)
+    return module.private.find_code_blocks_for_node(buffer, document_root)
+  end,
+
+  contained_code_blocks = function()
+    local buffer = 0
+    local ts = module.required["core.integrations.treesitter"].get_ts_utils()
+    local node = ts.get_node_at_cursor(buffer, true)
+
+    -- Ech - a hack. if youre on a heading, it says you're in a heading_prefix or paragraph_segment.
+    -- if you're randomly inbetween some blocks, it says you're in a heading
+    if (node:type():match("^heading%d_prefix$") or node:type() == "paragraph_segment") and node:parent():type():match("^heading%d$") then
+      -- ok
+      -- strangely when you are on a heading it matches the heading-prefix or paragraph-segment
+      -- node = module.required["core.integrations.treesitter"].find_parent(node, "^heading%d$")
+      node = node:parent()
+      return module.private.find_code_blocks_for_node(buffer, node)
+    else
+      -- not a heading
+      vim.notify("not inside a code block or on a heading", "warn", {title = title})
+    end
+
+      -- vim.notify(node:type())
+      -- vim.notify(node:parent():type())
+  end,
+
+  find_code_blocks_for_node = function(buffer, root)
     local parsed_document_metadata = module.required["core.integrations.treesitter"].get_document_metadata(buffer)
 
     if vim.tbl_isempty(parsed_document_metadata) or not parsed_document_metadata.tangle then
@@ -323,7 +350,6 @@ module.private = {
       }
     end
 
-    local document_root = module.required["core.integrations.treesitter"].get_document_root(buffer)
 
     local options = {
       languages = {},
@@ -362,7 +388,8 @@ module.private = {
     local query = neorg.utils.ts_parse_query("norg", query_str)
     local nodes = {}
 
-    for id, node in query:iter_captures(document_root, buffer, 0, -1) do
+    for id, node in query:iter_captures(root, buffer, 0, -1) do
+      -- vim.notify('found 1')
       local capture = query.captures[id]
       if capture == "tag" then
         table.insert(nodes, node)
@@ -384,7 +411,6 @@ module.private = {
 
   node_carrover_tags = function(p)
     local tags = {}
-    --local p = p:prev_named_sibling():prev_named_sibling()
     for child, _ in p:iter_children() do
       if child:type() == "strong_carryover_set" then
         for child2, _ in child:iter_children() do
@@ -465,7 +491,7 @@ module.private = {
   end,
 
   do_task = function(task, tx)
-      local code_blocks = module.private.find_all_code_nodes()
+      local code_blocks = module.private.find_all_code_blocks()
       -- TODO
       -- if current_item[2] == "cursor" then find blocks within the cursor's object
       local code_block = code_blocks[task.blocknum]
@@ -498,33 +524,39 @@ module.private = {
 module.public = {
   -- TODO - all blocks in a section
   do_code_block_under_cursor = function()
-    -- NOTE this is involves extra pass in treesitter before going to the scheduler
-    -- It needs to calculate which block it is,
-    -- in case another block is already running & the line number may change
-    local code_blocks = module.private.find_all_code_nodes()
-    local my_block = module.private.current_node()
-    for i, doc_block in ipairs(code_blocks) do
-      if my_block == doc_block then
-        -- vim.notify('found a match')
-        scheduler.enqueue({
-          scope = 'buf',
-          blocknum = i,
-          do_task = module.private.do_task,
-        })
+    local my_block = module.private.current_code_block()
+    if my_block then
+
+      -- NOTE this will be reevaluated in treesitter by the scheduler
+      -- It needs to calculate which block it is,
+      -- in case another block is already running & the line number may change
+      local code_blocks = module.private.find_all_code_blocks()
+      for i, doc_block in ipairs(code_blocks) do
+        if my_block == doc_block then
+          -- vim.notify('found a match')
+          scheduler.enqueue({
+            scope = 'buf',
+            blocknum = i,
+            do_task = module.private.do_task,
+          })
+        end
+      end
+    else
+      local my_blocks = module.private.contained_code_blocks()
+      for i, _ in ipairs(my_blocks) do
+          -- vim.notify('found a match inside current block')
+          scheduler.enqueue({
+            scope = 'container',
+            container = '',
+            blocknum = i,
+            do_task = module.private.do_task,
+          })
       end
     end
-    -- if module.private.init_cursor() then
-    --   local code_block = module.private.current_node()
-    --   local code_block_info = module.private.node_info(code_block)
-    --   if not code_block_info then
-    --     return
-    --   end
-    --   module.private.do_run_block(code_block, code_block_info)
-    -- end
   end,
 
   do_buf = function()
-    local code_blocks = module.private.find_all_code_nodes()
+    local code_blocks = module.private.find_all_code_blocks()
     for i, _ in ipairs(code_blocks) do
     -- We really just need the index of each block within the scope.
     -- After a block completes, the next block needs to be found all over again
