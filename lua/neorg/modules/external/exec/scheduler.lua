@@ -24,7 +24,9 @@ end
 
 -- initially just creaet a new one each time
 -- TODO match runtime info to workers when there's a session
-local choose_worker = function(rt_info)
+local find_session = function(task)
+  -- if session then repl
+  -- otherwise new process
   return nil
 end
 
@@ -34,14 +36,20 @@ local do_task = function(task)
   -- session_identifier is only set when it's a session id
   -- the task needs to recalculate where the hell the block is now (maybe location has changed)
   -- and then defines runtime info for execution
-  -- local rt_info = task.prep()
-  -- local worker = choose_worker(rt_info)
-  -- if worker then
-  --   worker.execute(task, rt_info)
-  -- end
+  if not task.prep(task) then
+    return function()
+      -- nothing to do
+    end
+  end
 
+
+  local session = find_session(task)
   local tx, rx = a.control.channel.oneshot()
-  task.do_task(task, tx)
+  if session then
+    task.do_task_session(task, tx, session)
+  else
+    task.do_task_spawn(task, tx)
+  end
   return rx
 end
 
