@@ -8,6 +8,7 @@ return {
         lua = {
             cmd = "lua ${0}",
             type = "interpreted",
+            repl = "lua -i",
         },
         javascript = {
             cmd = "node ${0}",

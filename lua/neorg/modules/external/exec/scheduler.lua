@@ -6,6 +6,8 @@ local M = {
   execute = nil,
 }
 
+local title = "external.exec.scheduler"
+
 -- set up a private pub/sub queue
 local a = require'plenary.async'
 -- multi-producer single consumer
@@ -24,8 +26,30 @@ end
 
 -- initially just creaet a new one each time
 -- TODO match runtime info to workers when there's a session
-local find_session = function(task)
+local find_or_init_session = function(task)
   -- if session then repl
+  if task.state.session and task.state.lang_cfg.repl then
+    local key = task.state.ft .. ":" .. task.state.session
+    if M.sessions[key] then
+      local s = M.sessions[key]
+
+      if s.state.running then
+        vim.notify("found running repl. Send to repl", "info", {title = title})
+        -- update all state except keep jobid
+        task.state.jobid = s.state.jobid
+        task.state.running = s.state.running
+        s.state = task.state
+        return s
+      end
+      vim.notify("process is gone. restart session", "warn", {title = title})
+      -- it's dead, Jim. start another session
+    end
+    -- create session
+    task.init_session(task, function()
+    end)
+    M.sessions[key] = task
+    return task
+  end
   -- otherwise new process
   return nil
 end
@@ -38,24 +62,24 @@ local do_task = function(task)
   -- and then defines runtime info for execution
   if not task.prep(task) then
     return function()
-      -- nothing to do
+      -- nothing to rx
     end
   end
-
-
-  local session = find_session(task)
-  local tx, rx = a.control.channel.oneshot()
+  local session = find_or_init_session(task)
   if session then
-    task.do_task_session(task, tx, session)
+    session.do_task_session(session)
+    return function()
+    end
   else
+    local tx, rx = a.control.channel.oneshot()
     task.do_task_spawn(task, tx)
+    return rx
   end
-  return rx
 end
 
 M.start = function()
   if M.active then
-    vim.notify('called start again?!')
+    vim.notify('called start again?!', 'warn', {title = title})
     return
   end
     M.active = true
