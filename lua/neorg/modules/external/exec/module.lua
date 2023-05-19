@@ -23,8 +23,8 @@ module.load = function()
       args = 1,
       subcommands = {
         cursor = { args = 0, name = "exec.cursor" },
-        buf = { args = 0, name = "exec.buf" },
-        hide = { args = 0, name = "exec.hide" },
+        ['current-file'] = { args = 0, name = "exec.current-file" },
+        clear = { args = 0, name = "exec.clear" },
         materialize = { args = 0, name = "exec.materialize" },
       },
     },
@@ -34,10 +34,6 @@ end
 module.config.public = require("neorg.modules.external.exec.config")
 
 module.private = {
-  task = {
-    id = nil,
-    running = false,
-  },
   tmpdir = "/tmp/neorg-exec/", -- TODO use io.tmpname? for portability
 
 
@@ -75,14 +71,13 @@ module.private = {
       end
       renderers[task.state.outmode].append(task, data, hl)
 
-      if task.handle_lines_extra then
+      if task.handle_lines_extra ~= nil then
         task.handle_lines_extra()
       end
     end,
 
     spawn = function(task, command, done)
       renderers[task.state.outmode].init(task)
-
       task.state.running = true
       task.state.start = os.clock()
 
@@ -181,9 +176,10 @@ module.private = {
     do_run_block_session = function(task)
       -- initialize block
       renderers[task.state.outmode].init(task)
-
       local content = table.concat(task.state.code_block.content, "\n")
-      vim.notify(string.format("send to running session: %s", content), "info", {title = title})
+      task.state.running = true
+      task.state.start = os.clock()
+      -- vim.notify(string.format("send to running session: %s", content), "info", {title = title})
       vim.api.nvim_chan_send(task.state.jobid, content)
 
       -- after receiving response (hopefully the whole response)
@@ -247,18 +243,25 @@ module.public = {
       if not my_blocks or #my_blocks == 0 then
         vim.notify(string.format("This is not a code block (or a heading containing code blocks)"), "warn", {title = title})
       end
-      for i, _ in ipairs(my_blocks) do
-        -- vim.notify('found a match inside current block')
-        scheduler.enqueue({
-          task_type = 'run_block',
-          blocknum = i,
-          prep = module.private.prep_run_block,
-            -- don't know which strategy yet
-          do_task = module.private.do_run_block_spawn,
-          init_session = module.private.init_session,
-          do_task_session = module.private.do_run_block_session,
-          state = nil,
-        })
+      local code_blocks = ts.find_all_verbatim_blocks("code", true)
+      for i, allb in ipairs(code_blocks) do
+        -- TODO must be the right blocks
+        for _, myb in ipairs(my_blocks) do
+          if allb == myb then
+            -- vim.notify('found a match inside current block')
+            scheduler.enqueue({
+              task_type = 'run_block',
+              blocknum = i,
+              prep = module.private.prep_run_block,
+                -- don't know which strategy yet
+              do_task = module.private.do_run_block_spawn,
+              init_session = module.private.init_session,
+              do_task_session = module.private.do_run_block_session,
+              state = nil,
+            })
+            break -- move to next all_block
+          end
+        end
       end
     end
   end,
@@ -283,11 +286,11 @@ module.public = {
 
 
     -- find *all* virtmarks and delete them
-    hide = function()
+    clear_results = function()
       -- TODO put this on the queue?
       vim.api.nvim_buf_clear_namespace(0, renderers.ns, 0, -1)
       local result_blocks = ts.find_all_verbatim_blocks("result")
-      vim.notify(string.format('found %d', #result_blocks), 'info', {title = title})
+      -- vim.notify(string.format('found %d', #result_blocks), 'info', {title = title})
 
       -- iterate backwards to avoid needing to recalculate positions
       for i = #result_blocks, 1, -1 do
@@ -317,14 +320,14 @@ module.public = {
         local out = {}
         local curr_task = renderers.extmarks[mark[1]]
 
-        vim.notify(string.format('found %s - %d',mark[1], #curr_task.output))
+        -- vim.notify(string.format('found %s - %d',mark[1], #curr_task.output))
         if curr_task then
           for _, line in ipairs(curr_task.output) do
             table.insert(out, line[1][1])
             --vim.notify(string.format('line %s', line[1][1]))
             --return
           end
-          vim.notify(string.format('out: %s - %s',mark[2], #out))
+          -- vim.notify(string.format('out: %s - %s',mark[2], #out))
           vim.api.nvim_buf_set_lines(
           curr_task.buf,
           mark[2]+1,
@@ -378,10 +381,10 @@ module.public = {
 module.on_event = function(event)
   if event.split_type[2] == "exec.cursor" then
     vim.schedule(module.public.do_code_block_under_cursor)
-  elseif event.split_type[2] == "exec.buf" then
+  elseif event.split_type[2] == "exec.current-file" then
     vim.schedule(module.public.do_buf)
-  elseif event.split_type[2] == "exec.hide" then
-    vim.schedule(module.public.hide)
+  elseif event.split_type[2] == "exec.clear" then
+    vim.schedule(module.public.clear_results)
   elseif event.split_type[2] == "exec.materialize" then
     vim.schedule(module.public.materialize)
   end
@@ -390,8 +393,8 @@ end
 module.events.subscribed = {
   ["core.neorgcmd"] = {
     ["exec.cursor"] = true,
-    ["exec.buf"] = true,
-    ["exec.hide"] = true,
+    ["exec.current-file"] = true,
+    ["exec.clear"] = true,
     ["exec.materialize"] = true,
   },
 }
