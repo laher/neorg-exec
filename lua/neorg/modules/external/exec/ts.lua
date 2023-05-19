@@ -4,9 +4,9 @@ local M = {
   ts = nil,
 }
 
-local title = "external.exec"
+local title = "external.exec.ts"
 
-M.current_code_block = function()
+M.current_verbatim_tag = function()
   local ts = M.ts.get_ts_utils()
   local node = ts.get_node_at_cursor(0, true)
   local p = M.ts.find_parent(node, "^ranged_verbatim_tag$")
@@ -29,13 +29,13 @@ M.find_next_sibling = function(node, types)
   end
 end
 
-M.find_all_code_blocks = function()
+M.find_all_verbatim_blocks = function(tagname, expect_param)
   local buffer = 0
   local document_root = M.ts.get_document_root(buffer)
-  return M.find_code_blocks_for_node(buffer, document_root)
+  return M.find_verbatim_blocks_in(buffer, document_root, tagname, expect_param)
 end
 
-M.contained_code_blocks = function()
+M.contained_verbatim_blocks = function(tagname, expect_param)
   local buffer = 0
   -- local ts = module.required["core.integrations.treesitter"].get_ts_utils()
   -- local node = ts.get_node_at_cursor(buffer, true)
@@ -44,10 +44,10 @@ M.contained_code_blocks = function()
   local node = M.ts.get_first_node_on_line(buffer, lineNum-1, {})
   -- vim.notify(string.format("%s", node))
 
-  return M.find_code_blocks_for_node(buffer, node)
+  return M.find_verbatim_blocks_in(buffer, node, tagname, expect_param)
 end
 
-M.find_code_blocks_for_node = function(buffer, root)
+M.find_verbatim_blocks_in = function(buffer, root, tagname, expect_param)
   local parsed_document_metadata = M.ts.get_document_metadata(buffer)
 
   if vim.tbl_isempty(parsed_document_metadata) or not parsed_document_metadata.tangle then
@@ -62,31 +62,32 @@ M.find_code_blocks_for_node = function(buffer, root)
     scope = parsed_document_metadata.exec.scope or "all", -- "all" | "tagged" | "main"
   }
 
-
+  local has_param = ''
+  if expect_param then
+    has_param = [[(tag_parameters
+    .
+    (tag_param) @_language)]]
+  end
   local query_str = neorg.lib.match(options.scope)({
     _ = [[
     (ranged_verbatim_tag
     name: (tag_name) @_name
-    (#eq? @_name "code")
-    (tag_parameters
-    .
-    (tag_param) @_language)) @tag
+    (#eq? @_name "]] .. tagname ..[[")
+    ]] .. has_param .. [[) @tag
     ]],
     tagged = [[
     (ranged_verbatim_tag
     [(strong_carryover_set
     (strong_carryover
     name: (tag_name) @_strong_carryover_tag_name
-    (#eq? @_strong_carryover_tag_name "exec.name")))
+    (#lua-match? @_strong_carryover_tag_name "^exec\..*")))
     (weak_carryover_set
     (weak_carryover
     name: (tag_name) @_weak_carryover_tag_name
-    (#eq? @_weak_carryover_tag_name "exec.name")))]
+    (#lua-match? @_weak_carryover_tag_name "^exec\..*")))]
     name: (tag_name) @_name
-    (#eq? @_name "code")
-    (tag_parameters
-    .
-    (tag_param) @_language)) @tag
+    (#eq? @_name "]] .. tagname .. [[")
+    ]] .. has_param .. [[) @tag
     ]],
   })
 
@@ -115,13 +116,30 @@ M.node_info = function(p)
   return cb
 end
 
+M.node_carryover_tags_firstline = function(p)
+  local line, _, _ = p:start()
+  for child, _ in p:iter_children() do
+    if child:type() == "strong_carryover_set" then
+      for child2, _ in child:iter_children() do
+        if child2:type() == "strong_carryover" then
+          local l, _, _ = child2:start()
+          if l < line then
+            line = l
+          end
+        end
+      end
+    end
+  end
+  return line
+end
+
 M.node_carryover_tags = function(p)
   local tags = {}
   for child, _ in p:iter_children() do
     if child:type() == "strong_carryover_set" then
       for child2, _ in child:iter_children() do
         if child2:type() == "strong_carryover" then
-          local cot = M.ts.get_tag_info(child2, true)
+          local cot = M.node_info(child2)
           tags[cot.name] = cot.parameters
           -- vim.notify(string.format("%s: %s", cot.name, table.concat(cot.parameters, '-')))
         end

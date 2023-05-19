@@ -4,6 +4,7 @@ return {
         python = {
             cmd = "python3 ${0}",
             type = "interpreted",
+            repl = "python3",
         },
         lua = {
             cmd = "lua ${0}",
@@ -13,14 +14,17 @@ return {
         javascript = {
             cmd = "node ${0}",
             type = "interpreted",
+            repl = "node",
         },
         bash = {
             cmd = "bash ${0}",
             type = "interpreted",
+            repl = "bash",
         },
         zsh = {
             cmd = "zsh ${0}",
             type = "interpreted",
+            repl = "zsh",
         },
         php = {
             cmd = "php ${0}",
@@ -29,6 +33,7 @@ return {
         ruby = {
             cmd = "ruby ${0}",
             type = "interpreted",
+            repl = "ruby",
         },
 
         --> Compiled

@@ -32,7 +32,6 @@ module.load = function()
 end
 
 module.config.public = require("neorg.modules.external.exec.config")
-module.config.private = {}
 
 module.private = {
   task = {
@@ -42,25 +41,9 @@ module.private = {
   tmpdir = "/tmp/neorg-exec/", -- TODO use io.tmpname? for portability
 
 
-  -- TODO revisit this? checking if it's already running - debounce?
-  -- init_cursor = function()
-    --   -- IMP: check for existng marks and return if it exists.
-    --   if module.private.task.running then
-    --     local code_start, code_end = module.private.task.code_block["start"].row + 1, module.private.task.code_block["end"].row + 1
-    --     local cr, _ = unpack(vim.api.nvim_win_get_cursor(0))
-    --
-    --     if code_start > cr or code_end < cr then
-    --       nvim.notify("Another task is already runnig.", 'warn')
-    --     else
-    --       nvim.notify("This task is already running. Hold on.", 'warn')
-    --       -- TODO: what to do? still run it?
-    --     end
-    --     return false
-    --   end
-    --   return module.private.init_task()
-    -- end,
-
+    -- prep a task - just to put it onto the queue
     init_task = function(task)
+      -- create an extmark and use its ID as an identifier
       local id = vim.api.nvim_buf_set_extmark(0, renderers.ns, 0, 0, {})
 
       table.insert(renderers.extmarks, id)
@@ -124,7 +107,7 @@ module.private = {
             vim.notify(string.format("exit - non-zero result! %d", data), "warn", {title = title})
           end
 
-          renderers[task.state.outmode].render_exit(task)
+          renderers[task.state.outmode].render_exit(task, data)
           spinner.shut(task.state.spinner, renderers.ns)
           if task.state.temp_filename then
             vim.fn.delete(task.state.temp_filename)
@@ -137,7 +120,7 @@ module.private = {
     end,
 
     prep_run_block = function(task)
-      local code_blocks = ts.find_all_code_blocks()
+      local code_blocks = ts.find_all_verbatim_blocks("code", true)
       local node = code_blocks[task.blocknum]
       if not module.private.init_task(task) then
         return
@@ -205,7 +188,7 @@ module.private = {
 
       -- after receiving response (hopefully the whole response)
       task.handle_lines_extra = function()
-        renderers[task.state.outmode].render_exit(task)
+        renderers[task.state.outmode].render_exit(task, nil)
         spinner.shut(task.state.spinner, renderers.ns)
         task.handle_lines_extra = nil
       end
@@ -239,15 +222,14 @@ module.private = {
 module.public = {
   -- TODO - all blocks in a section
   do_code_block_under_cursor = function()
-    local my_block = ts.current_code_block()
+    local my_block = ts.current_verbatim_tag()
     if my_block then
       -- NOTE the block will be reevaluated in treesitter by the scheduler, because each result updates the AST
       -- It needs to calculate which block it is,
       -- in case another block is already running & the line number may change
-      local code_blocks = ts.find_all_code_blocks()
+      local code_blocks = ts.find_all_verbatim_blocks("code", true)
       for i, doc_block in ipairs(code_blocks) do
         if my_block == doc_block then
-          -- vim.notify('found a match')
           scheduler.enqueue({
             task_type = 'run_block',
             blocknum = i,
@@ -261,7 +243,7 @@ module.public = {
         end
       end
     else
-      local my_blocks = ts.contained_code_blocks()
+      local my_blocks = ts.contained_verbatim_blocks("code", true)
       if not my_blocks or #my_blocks == 0 then
         vim.notify(string.format("This is not a code block (or a heading containing code blocks)"), "warn", {title = title})
       end
@@ -282,14 +264,20 @@ module.public = {
   end,
 
   do_buf = function()
-    local code_blocks = ts.find_all_code_blocks()
+    local code_blocks = ts.find_all_verbatim_blocks("code", true)
     for i, _ in ipairs(code_blocks) do
       -- We really just need the index of each block within the scope.
       -- After a block completes, the next block needs to be found all over again
       scheduler.enqueue({
-        scope = 'buf',
+        task_type = 'run_block',
         blocknum = i,
-        do_task = module.private.do_task})
+        prep = module.private.prep_run_block,
+          -- don't know which strategy yet
+        do_task = module.private.do_run_block_spawn,
+        init_session = module.private.init_session,
+        do_task_session = module.private.do_run_block_session,
+        state = nil,
+        })
       end
     end,
 
@@ -298,6 +286,27 @@ module.public = {
     hide = function()
       -- TODO put this on the queue?
       vim.api.nvim_buf_clear_namespace(0, renderers.ns, 0, -1)
+      local result_blocks = ts.find_all_verbatim_blocks("result")
+      vim.notify(string.format('found %d', #result_blocks), 'info', {title = title})
+
+      -- iterate backwards to avoid needing to recalculate positions
+      for i = #result_blocks, 1, -1 do
+        local block = result_blocks[i]
+        local start_row = ts.node_carryover_tags_firstline(block)
+        local end_row,_,_ = block:end_()
+          vim.api.nvim_buf_set_lines(
+          0,
+          start_row,
+          end_row + 1, -- inclusive
+          true,
+          {}
+          )
+        -- scheduler.enqueue({
+        --   scope = 'wipe_result',
+        --   blocknum = i,
+        --   do_task = module.private.wipe_result_block,
+        -- })
+      end
     end,
 
     -- TODO: find *all* virtmarks and materialize them. Track them separately to tasks

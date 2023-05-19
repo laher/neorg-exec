@@ -7,6 +7,19 @@ local M = {
   extmarks = {}, -- a sequence of virtual text blocks
 }
 
+M.startline = function()
+  -- eesh you can't use - or :, otherwise norg won't parse it
+  return os.date("#exec.start %Y.%m.%dT%H.%M.%S%Z", os.time())
+end
+
+M.endline = function(task, exit_code)
+  local endl =  string.format("#exec.end %0.4fs", os.clock() - task.state.start)
+  if exit_code ~= nil then -- nil is for sessions
+    endl = endl .. ' ' .. exit_code  -- non-nil is for non-sessions
+  end
+  return endl
+end
+
 M.virtual.init = function(task)
   task.state.spinner = spinner.start(task.state, M.ns)
 
@@ -17,7 +30,7 @@ M.virtual.init = function(task)
 
   task.state.output = {
     { { "", "Keyword" } },
-    { { os.date("#exec.start %Y-%m-%dT%H:%M:%S%Z", os.time()), "Keyword" } },
+    { { M.startline(), "Keyword" } },
     { { "@result", "Keyword" } },
     { { "", "Function" } },
   }
@@ -57,9 +70,7 @@ end
 
 
 M.virtual.render_exit = function(task, exit_code)
-
-  local exec_exit = string.format("#exec.exit %s %0.4fs", exit_code, os.clock() - task.state.start)
-  table.insert(task.state.output, 3, { { exec_exit, "Keyword" } })
+  table.insert(task.state.output, 3, { { M.endline(task, exit_code), "Keyword" } })
   -- table.insert(curr_task.output, { { "@end", "Keyword" } })
   M.virtual.append(task, {"@end"}, "Keyword")
   M.virtual.update(task)
@@ -74,7 +85,7 @@ M.normal.init = function(task)
     task.state.output = {}
   end
   -- first line is ignored
-  local output = { "", "", string.format("%s",os.date("#exec.start %Y-%m-%dT%H:%M:%S%Z", os.time())), "@result", "" }
+  local output = { "", "", M.startline(), "@result", "" }
 
   M.normal.append(task, output)
 end
@@ -115,23 +126,23 @@ M.normal.append = function(task, lines)
   local first_line = table.remove(lines, 1)
   if first_line ~= '' then
     vim.api.nvim_buf_set_text(
-    curr_task.buf,
-    curr_task.code_block["end"].row + curr_task.linec,
-    curr_task.charc,
-    curr_task.code_block["end"].row + curr_task.linec,
-    curr_task.charc,
-    {first_line}
+      curr_task.buf,
+      curr_task.code_block["end"].row + curr_task.linec,
+      curr_task.charc,
+      curr_task.code_block["end"].row + curr_task.linec,
+      curr_task.charc,
+      {first_line}
     )
     curr_task.linec = curr_task.linec + 1
   end
   -- other lines ... just append at once
   if #lines > 0 then
     vim.api.nvim_buf_set_lines(
-    curr_task.buf,
-    curr_task.code_block["end"].row + curr_task.linec + 1,
-    curr_task.code_block["end"].row + curr_task.linec + 1,
-    true,
-    lines
+      curr_task.buf,
+      curr_task.code_block["end"].row + curr_task.linec + 1,
+      curr_task.code_block["end"].row + curr_task.linec + 1,
+      true,
+      lines
     )
     -- length of last line
     curr_task.charc = #lines[#lines]
@@ -142,8 +153,7 @@ M.normal.append = function(task, lines)
 end
 
 M.normal.render_exit = function(task, exit_code)
-  local exec_exit = string.format("#exec.exit %s %0.4fs", exit_code, os.clock() - task.state.start)
-  -- always include an extra prefix line to indicate newline
+  -- include an extra prefix line to indicate last line was complete
   M.normal.append(task, {"", "@end", ""})
   -- insert directly
   vim.api.nvim_buf_set_lines(
@@ -151,7 +161,7 @@ M.normal.render_exit = function(task, exit_code)
   task.state.code_block["end"].row + 3,
   task.state.code_block["end"].row + 3,
   true,
-  { exec_exit }
+  { M.endline(task, exit_code) }
   )
 end
 
