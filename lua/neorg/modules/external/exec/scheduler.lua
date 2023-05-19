@@ -28,7 +28,7 @@ end
 -- TODO match runtime info to workers when there's a session
 local find_or_init_session = function(task)
   -- if session then repl
-  if task.state.session and task.state.lang_cfg.repl then
+  if task.state.session and task.state.session ~= "" and task.state.lang_cfg.repl then
     local key = task.state.ft .. ":" .. task.state.session
     if M.sessions[key] then
       local s = M.sessions[key]
