@@ -2,22 +2,78 @@
 
     **PRE-ALPHA** - breaking changes incoming soon. See Planning, below
 
-Code block execution for [neorg](https://github.com/nvim-neorg/neorg),
-similar to [Org Mode's 'eval'](https://orgmode.org/manual/Evaluating-Code-Blocks.html)
+`@code` block execution for [neorg](https://github.com/nvim-neorg/neorg),
+similar to [Org Mode's 'eval'](https://orgmode.org/manual/Evaluating-Code-Blocks.html).
 
-neorg-exec captures the results of the code block evaluation and inserts them in the norg file,
-right after the code block.
-
-The insertion point is after a newline and the ‘Results’ keyword.
-
-neorg-exec creates the ‘Results’ keyword if one is not already there.
-
-
-This code began with [tamton-aquib's PR](https://github.com/nvim-neorg/neorg/pull/618) -
+This code began with
+[tamton-aquib's PR](https://github.com/nvim-neorg/neorg/pull/618) -
 thanks to @tamton-aquib.
 
+## An example
+
+In a norg file, move the cursor into the code block and execute `:Neorg exec cursor`.
+
+The lua code will run and the `@result` tag will be [re]-generated.
+
+```norg
+@code lua
+print('hello, neorg')
+@end
+
+@result
+hello, neorg
+@end
+```
+
+## Goals and non-goals
+
+This project is super early in development, and working out what it wants to be.
+Conceptually, it would be nice to reproduce some of the success of `org-babel`,
+but the scope should be limited.
+
+Eventually, Neorg will have its own native `core.exec` module.
+Maybe some of this code will be used, maybe not.
+For now I'm taking advice from the Neorg team to try and ensure this fits reasonably
+into the ecosystem.
+
+### Some goals
+
+* Goal: Support a
+[literate programming](https://en.wikipedia.org/wiki/Literate_programming)
+use case, but don't try to solve all its problems.
+* Goal: execute norg `@code` blocks according to per-language configurations.
+* Goal: capture results into `@result` tags, which are themselves
+'verbatim ranged tags'.
+* Goal: schedule execution appropriately, such that code executions don't
+interfere with one another.
+* Goal: support extension via public functions.
+* Goal: make use of existing modules like `core.tangle`, where appropriate.
+* Goal: use a sensible set of tags for affecting the behaviour of code execution.
+* Goal: an API to allow for adding runners for different languages.
+* Goal: provide some runtime flexibility.
+  * Provide support for environment variables, arguments, compilation options,
+  some basic error handling.
+  * Output handling options - to current-file, an external file, virtual lines.
+  * Either execute a code block in its own process, or (for debugging),
+  a long-running REPL-style session.
+
+### Non-goals
+
+These non-goals are useful to help define the API, so that people can extend with
+their own modules.
+
+* Non-goal: tangling (exporting code to files). See `core.tangle`.
+* Non-goal: processing results. This should be done with macros. Maybe another module.
+* Non-goal: `org-babel` style interopability between languages and data sources.
+Another module might look to reproduce these amazing features.
+* Non-goal: a comprehensive platform of language & OS code runners,
+containerised runners, all that jazz.
+
 ## 🔧 Installation
-First, make sure to pull this plugin down. This plugin does not run any code in of itself.
+
+First, make sure to pull this plugin down.
+This plugin does not run any code in of itself.
+
 It requires Neorg to load it first:
 
 You can install it through your favorite plugin manager:
@@ -34,7 +90,7 @@ You can install it through your favorite plugin manager:
               load = {
                   ["core.defaults"] = {},
                   ...
-                  ["core.integrations.telescope"] = {}
+                  ["external.exec"] = {},
               },
           }
       end,
@@ -85,7 +141,6 @@ You can install it through your favorite plugin manager:
 
   </details>
 
-
 ## Usage
 
 Given a norg file containing a code block like this:
@@ -102,15 +157,15 @@ You can `exec` the code block under the cursor with an ex command:
 :Neorg exec cursor
 ```
 
-`cursor` also works on headings. It will execute all code blocks inside that heading section.
+`cursor` also works on headings. It will execute all code blocks within that heading section.
 
-To run all blocks in the file, you can use `buf`
+To run all blocks in the file, you can use `current-file`.
 
 ```vim
 :Neorg exec buf
 ```
 
-Or you can bind a key like this
+Or you can bind a key like this:
 
 
 ```lua
@@ -125,7 +180,7 @@ By default, the result will be written into the buffer, directly below the code 
 
 ```norg
 #result.start
-#result.exit 0 0.01s
+#result.exit 0.01s 0
 @result
 hello
 @end
@@ -146,10 +201,12 @@ Provide some tags to specify how to run the code.
 After running a code block with `virtual` rendering, you can use two other subcommands:
 
 - `materialize` to write the virtual text to the file,
-- or `hide` to delete the virtual text.
+- or `clear` to delete the virtual text.
 
 
 ## Planning
+
+Not really planning as such. More of a rambling list.
 
 ### Some bugs I noticed after importing
 
@@ -231,14 +288,16 @@ when you retry.
 - Security:
 - Safety options:
   - [ ] don't run multiple without confirm?
-  - [ ] chroot jails?
-  - [ ] docker-based runners?
+  - [ ] ~~chroot jails?~~ out of scope
+  - [ ] ~~docker-based runners?~~ out of scope
   - [ ] memory limits, timeouts, etc?
   - [ ] killing processes?
   - [ ] exec.none (could be the default, maybe)
 - Integration with `core.tangle`:
-  - [ ] Respect `core.tangle` tags somehow? Or at least follow the naming conventions.
-  - [ ] Use `core.tangle` to pre-process code blocks? Is that even feasible?
+  - [ ] Respect `core.tangle` tags somehow?
+   - [x] Or at least follow the naming conventions. (e.g. `current-file`)
+  - [ ] Use `core.tangle` to pre-process code blocks?
+    Is that even feasible?
 
 ### Planning - some examples
 
