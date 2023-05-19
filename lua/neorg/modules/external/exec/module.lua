@@ -121,7 +121,9 @@ module.private = {
         return
       end
       local node_info = ts.node_info(node)
-      if node_info.name == "code" then
+      if not node or not node_info then
+        vim.notify(string.format("This is not a code block. %d", task.blocknum), "warn", {title = title})
+      elseif node_info.name == "code" then
         -- default is 'normal'
         task.state.outmode = "normal"
         task.state.block_name = nil
@@ -254,7 +256,7 @@ module.public = {
               blocknum = i,
               prep = module.private.prep_run_block,
                 -- don't know which strategy yet
-              do_task = module.private.do_run_block_spawn,
+              do_task_spawn = module.private.do_run_block_spawn,
               init_session = module.private.init_session,
               do_task_session = module.private.do_run_block_session,
               state = nil,
@@ -276,7 +278,7 @@ module.public = {
         blocknum = i,
         prep = module.private.prep_run_block,
           -- don't know which strategy yet
-        do_task = module.private.do_run_block_spawn,
+        do_task_spawn = module.private.do_run_block_spawn,
         init_session = module.private.init_session,
         do_task_session = module.private.do_run_block_session,
         state = nil,
