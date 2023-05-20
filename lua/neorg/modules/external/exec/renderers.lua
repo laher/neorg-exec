@@ -21,6 +21,7 @@ M.endline = function(task, exit_code)
 end
 
 M.virtual.init = function(task)
+    M.virtual.clear_next_result_tag(task.state.buf, task.state.node)
     task.state.spinner = spinner.start(task.state, M.ns)
 
     -- Fix for re-execution
@@ -38,6 +39,11 @@ M.virtual.init = function(task)
     M.extmarks[task.state.id] = task.state -- for materializing later
     M.virtual.update(task)
     return task.state.id
+end
+
+M.virtual.clear_next_result_tag = function(buf, p)
+    local pinf = ts.node_info(p)
+    vim.api.nvim_buf_clear_namespace(buf, M.ns, pinf["end"].row, pinf["end"].row + 1)
 end
 
 M.virtual.append = function(task, data, hl)
