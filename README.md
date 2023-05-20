@@ -162,14 +162,15 @@ You can `exec` the code block under the cursor with an ex command:
 To run all blocks in the file, you can use `current-file`.
 
 ```vim
-:Neorg exec buf
+:Neorg exec current-file
 ```
 
 Or you can bind a key like this:
 
 
 ```lua
-vim.keymap.set('n', '<localleader>x', ':Neorg exec cursor<CR>', {silent = true}) -- search file
+vim.keymap.set('n', '<localleader>x', ':Neorg exec cursor<CR>', {silent = true}) -- just this block or blocks within heading section
+vim.keymap.set('n', '<localleader>X', ':Neorg exec current-file<CR>', {silent = true}) -- whole file
 ```
 
 _Note: `localleader` is like `leader` but intended more for specific filetypes, but you can use `leader` if you prefer)._
