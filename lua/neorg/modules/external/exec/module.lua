@@ -220,7 +220,7 @@ module.private = {
         module.private.spawn(task, command, tx)
     end,
 
-    enqueue_run_block = function(blocknum)
+    enqueue_block_by_index = function(blocknum)
         scheduler.enqueue({
             task_type = "run_block",
             blocknum = blocknum,

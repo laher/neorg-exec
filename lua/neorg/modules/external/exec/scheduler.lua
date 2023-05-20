@@ -33,7 +33,7 @@ local find_or_init_session = function(task)
             local s = M.sessions[key]
 
             if s.state.running then
-                vim.notify("found running repl. Send to repl", "info", { title = title })
+                -- vim.notify("found running repl. Send to repl", "info", { title = title })
                 -- update all state except keep jobid
                 task.state.jobid = s.state.jobid
                 task.state.running = s.state.running

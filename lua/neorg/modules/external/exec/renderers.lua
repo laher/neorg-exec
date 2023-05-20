@@ -86,6 +86,12 @@ M.normal.init = function(task)
     local output = { "", "", M.startline(), "@result", "" }
 
     M.normal.append(task, output)
+
+    local linec = task.state.linec
+    local charc = task.state.charc
+    M.normal.append(task, {"", "", "@end" })
+    task.state.linec = linec
+    task.state.charc = charc -- don't overwrite @end
 end
 
 M.normal.clear_next_result_tag = function(buf, p)
@@ -151,7 +157,7 @@ end
 
 M.normal.render_exit = function(task, exit_code)
     -- include an extra prefix line to indicate last line was complete
-    M.normal.append(task, { "", "@end", "" })
+    -- M.normal.append(task, { "", "@end", "" })
     -- insert directly
     vim.api.nvim_buf_set_lines(
         task.state.buf,
