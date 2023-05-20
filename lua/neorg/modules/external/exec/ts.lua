@@ -54,9 +54,13 @@ M.find_verbatim_blocks_in = function(buffer, root, tagname, expect_param)
         }
     end
 
+    local scope
+    if parsed_document_metadata.exec ~= nil then
+        scope = parsed_document_metadata.exec.scope
+    end
     local options = {
         languages = {},
-        scope = parsed_document_metadata.exec.scope or "all", -- "all" | "tagged" | "main"
+        scope = scope or "all", -- "all" | "tagged" | "main"
     }
 
     local has_param = ""
