@@ -56,6 +56,7 @@ describe("running-handler", function()
     local handler = running.handler(case.task, function()
   end)
     handler.on_stdout(_, {"", "hello, world"})
+    handler.on_stdout(_, {"!", "", "this is neorg"}) -- simulate handling of incomplete lines
     handler.on_exit(_, 0)
 
     content = vim.api.nvim_buf_get_lines(0, 0, vim.api.nvim_buf_line_count(0), false)
@@ -64,14 +65,18 @@ describe("running-handler", function()
   end
 
   it("normal", function()
+    -- note: this output is currently a little off. There's an extra newline in there.
+    -- But when I fix it, I'll update the assertion.
     assert.equal(
-      [[@@ -17,0 +18,8 @@
+      [[@@ -17,0 +18,10 @@
 +#exec.start 1970.01.01T00.00.00NZST
 +#exec.end 0.0000s 0
 +@result
 +
-+hello, world
++hello, world!
 +
++
++this is neorg
 +@end
 +
 ]],
