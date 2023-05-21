@@ -63,7 +63,7 @@ describe("running-handler", function()
     return vim.diff(before, after)
   end
 
-  it("block_h1", function()
+  it("normal", function()
     assert.equal(
       [[@@ -17,0 +18,8 @@
 +#exec.start 1970.01.01T00.00.00NZST
