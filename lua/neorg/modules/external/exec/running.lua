@@ -4,8 +4,7 @@ local renderers = require("neorg.modules.external.exec.renderers")
 
 local title = "external.exec.running"
 local M = {
-    tmpdir = "/tmp/neorg-exec/", -- TODO use io.tmpname? for portability
-
+    tmpdir = "/tmp/neorg-exec/", -- TODO use io.tmpname? for portability. Or configuation opt?
 }
 
 M.session = {
@@ -66,15 +65,8 @@ M.oneoff = {
 
 }
 
-
-M.spawn = function(task, command, done)
-    renderers[task.state.outmode].init(task)
-    task.state.running = true
-    task.state.start = os.clock()
-
-    -- TODO: move to plenary-job?
-
-    task.state.jobid = vim.fn.jobstart(command, {
+M.handler = function(task, done)
+    return {
         stdout_buffered = false,
 
         -- TODO: check colors
@@ -102,7 +94,13 @@ M.spawn = function(task, command, done)
 
             done()
         end,
-    })
+  }
+end
+
+M.spawn = function(task, command, done)
+    renderers.init(task)
+    -- TODO: move to plenary-job?
+    task.state.jobid = vim.fn.jobstart(command, M.handler(task, done))
 end
 
 

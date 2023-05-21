@@ -1,0 +1,36 @@
+@document.meta
+tangle: {
+    languages: {
+        lua: ./output.lua
+    }
+    scope: main
+}
+@end
+
+* heading
+
+** heading2
+
+@code lua
+print("Hello")
+@end
+
+#exec.start 2023.05.21T21.25.45NZST
+#exec.end 0.0055s 0
+@result
+
+hello, world
+
+@end
+
+** heading3
+
+#tangle
+@code lua
+print("Sup")
+@end
+
+#tangle other-file.lua
+@code lua
+print("Ayo")
+@end

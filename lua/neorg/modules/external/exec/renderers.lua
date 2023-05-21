@@ -7,17 +7,28 @@ local M = {
     extmarks = {}, -- a sequence of virtual text blocks
 }
 
+-- replace this during testing
+M.time = function()
+  return os.time()
+end
+
 M.startline = function()
     -- eesh you can't use - or :, otherwise norg won't parse it
-    return os.date("#exec.start %Y.%m.%dT%H.%M.%S%Z", os.time())
+    return os.date("#exec.start %Y.%m.%dT%H.%M.%S%Z", M.time())
 end
 
 M.endline = function(task, exit_code)
-    local endl = string.format("#exec.end %0.4fs", os.clock() - task.state.start)
+    local endl = string.format("#exec.end %0.4fs", M.time() - task.state.start)
     if exit_code ~= nil then -- nil is for sessions
         endl = endl .. " " .. exit_code -- non-nil is for non-sessions
     end
     return endl
+end
+
+M.init = function(task)
+    M[task.state.outmode].init(task)
+    task.state.running = true
+    task.state.start = M.time()
 end
 
 M.virtual.init = function(task)
