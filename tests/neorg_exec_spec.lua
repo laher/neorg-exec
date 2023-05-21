@@ -46,7 +46,7 @@ describe("running-prep", function()
 end)
 
 
-describe("running-init", function()
+describe("running-handler", function()
   local function prep(case)
     vim.cmd ("e! +" .. case.line .. " " .. case.file)
     local content = vim.api.nvim_buf_get_lines(0, 0, vim.api.nvim_buf_line_count(0), false)
@@ -60,11 +60,10 @@ describe("running-init", function()
 
     content = vim.api.nvim_buf_get_lines(0, 0, vim.api.nvim_buf_line_count(0), false)
     local after = table.concat(content, "\n")
-    -- vim.cmd ("!w " .. case.file .. ".updated")
     return vim.diff(before, after)
   end
 
-  it("blocks_h1", function()
+  it("block_h1", function()
     assert.equal(
       [[@@ -17,0 +18,8 @@
 +#exec.start 1970.01.01T00.00.00NZST
@@ -87,7 +86,7 @@ describe("running-init", function()
     )
   end)
 
-  it("blocks_h2", function()
+  it("block_2", function()
     assert.equal(
       [[@@ -24,0 +25,8 @@
 +#exec.start 1970.01.01T00.00.00NZST
