@@ -9,7 +9,7 @@ local M = {
 
 -- replace this during testing
 M.time = function()
-  return os.time()
+    return os.time()
 end
 
 M.startline = function()
@@ -106,7 +106,7 @@ M.normal.init = function(task)
 
     local linec = task.state.linec
     local charc = task.state.charc
-    M.normal.append(task, {"", "", "@end" })
+    M.normal.append(task, { "", "", "@end" })
     task.state.linec = linec
     task.state.charc = charc -- don't overwrite @end
 end

@@ -30,12 +30,11 @@ M.session = {
             task.handle_lines_extra = nil
         end
     end,
-
 }
 
 M.oneoff = {
     init = function()
-      -- nothing to do
+        -- nothing to do
     end,
 
     do_run_block = function(task, tx)
@@ -62,7 +61,6 @@ M.oneoff = {
         local command = task.state.lang_cfg.cmd:gsub("${0}", task.state.temp_filename)
         M.spawn(task, command, tx)
     end,
-
 }
 
 M.handler = function(task, done)
@@ -94,7 +92,7 @@ M.handler = function(task, done)
 
             done()
         end,
-  }
+    }
 end
 
 M.spawn = function(task, command, done)
@@ -103,105 +101,99 @@ M.spawn = function(task, command, done)
     task.state.jobid = vim.fn.jobstart(command, M.handler(task, done))
 end
 
+M.handle_lines = function(task, data, hl)
+    if task.state.interrupted then
+        vim.fn.jobstop(task.state.jobid)
+        return
+    end
+    renderers[task.state.outmode].append(task, data, hl)
 
-M.handle_lines  = function(task, data, hl)
-  if task.state.interrupted then
-    vim.fn.jobstop(task.state.jobid)
-    return
-  end
-  renderers[task.state.outmode].append(task, data, hl)
-
-  if task.handle_lines_extra ~= nil then
-    task.handle_lines_extra()
-  end
+    if task.handle_lines_extra ~= nil then
+        task.handle_lines_extra()
+    end
 end
-
 
 -- prep a task - just to put it onto the queue
 M.init_task = function(task)
-  -- create an extmark and use its ID as an identifier
-  local id = vim.api.nvim_buf_set_extmark(0, renderers.ns, 0, 0, {})
+    -- create an extmark and use its ID as an identifier
+    local id = vim.api.nvim_buf_set_extmark(0, renderers.ns, 0, 0, {})
 
-  table.insert(renderers.extmarks, id)
+    table.insert(renderers.extmarks, id)
 
-  task.state = {
-    id = id,
-    buf = vim.api.nvim_get_current_buf(),
-    outmode = "normal", -- depends on tag. to be updated
-    interrupted = false,
-    jobid = nil,
-    temp_filename = nil,
-    node = nil,
-    code_block = {},
-    spinner = nil,
-    running = false,
-    start = nil,
-    output = {}, -- for virtual mode
-    linec = 0, -- for normal mode
-    charc = 0,
-  }
+    task.state = {
+        id = id,
+        buf = vim.api.nvim_get_current_buf(),
+        outmode = "normal", -- depends on tag. to be updated
+        interrupted = false,
+        jobid = nil,
+        temp_filename = nil,
+        node = nil,
+        code_block = {},
+        spinner = nil,
+        running = false,
+        start = nil,
+        output = {}, -- for virtual mode
+        linec = 0, -- for normal mode
+        charc = 0,
+    }
 
-  return true
+    return true
 end
 
 M.prep_run_block = function(task)
-  local code_blocks = ts.find_all_verbatim_blocks("code", true)
-  local node = code_blocks[task.blocknum]
-  if not M.init_task(task) then
-    return
-  end
-  local node_info = ts.node_info(node)
-  if not node or not node_info then
-    vim.notify(string.format("This is not a code block. %d", task.blocknum), "warn", { title = title })
-  elseif node_info.name == "code" then
-    -- default is 'normal'
-    task.state.outmode = "normal"
-    task.state.block_name = nil
-    task.state.session = nil
+    local code_blocks = ts.find_all_verbatim_blocks("code", true)
+    local node = code_blocks[task.blocknum]
+    if not M.init_task(task) then
+        return
+    end
+    local node_info = ts.node_info(node)
+    if not node or not node_info then
+        vim.notify(string.format("This is not a code block. %d", task.blocknum), "warn", { title = title })
+    elseif node_info.name == "code" then
+        -- default is 'normal'
+        task.state.outmode = "normal"
+        task.state.block_name = nil
+        task.state.session = nil
 
-    local tags = ts.node_carryover_tags(node)
-    for tag, params in pairs(tags) do
-      local paramS = table.concat(params)
-      if tag == "exec.session" then
-        task.state.session = paramS
-      elseif tag == "exec.name" then
-        task.state.block_name = paramS
-        -- vim.notify(params)
-      elseif tag == "exec.render" then
-        -- vim.notify(string.format("result rendering is %s", paramS))
-        if paramS == "virtual" then
-          task.state.outmode = "virtual"
+        local tags = ts.node_carryover_tags(node)
+        for tag, params in pairs(tags) do
+            local paramS = table.concat(params)
+            if tag == "exec.session" then
+                task.state.session = paramS
+            elseif tag == "exec.name" then
+                task.state.block_name = paramS
+            -- vim.notify(params)
+            elseif tag == "exec.render" then
+                -- vim.notify(string.format("result rendering is %s", paramS))
+                if paramS == "virtual" then
+                    task.state.outmode = "virtual"
+                end
+            end
         end
-      end
-    end
-    if task.state.block_name then
-      vim.notify(string.format("running code block '%s'", task.state.block_name), "info", { title = title })
-    else
-      vim.notify("running unnamed code block", "info", { title = title })
-    end
-    task.state["node"] = node
-    task.state["code_block"] = node_info
+        if task.state.block_name then
+            vim.notify(string.format("running code block '%s'", task.state.block_name), "info", { title = title })
+        else
+            vim.notify("running unnamed code block", "info", { title = title })
+        end
+        task.state["node"] = node
+        task.state["code_block"] = node_info
 
-    -- FIX: temp fix remove this!
-    -- Amir: I wonder what this fix was for
-    node_info["parameters"] = vim.split(node_info["parameters"][1], " ")
-    local ft = node_info.parameters[1]
-    task.state["ft"] = ft
-    task.state.lang_cfg = task.mconfig.lang_cmds[task.state.ft]
-    if not task.state.lang_cfg then
-      vim.notify("Language not supported currently!", "error", { title = title })
-      return
+        -- FIX: temp fix remove this!
+        -- Amir: I wonder what this fix was for
+        node_info["parameters"] = vim.split(node_info["parameters"][1], " ")
+        local ft = node_info.parameters[1]
+        task.state["ft"] = ft
+        task.state.lang_cfg = task.mconfig.lang_cmds[task.state.ft]
+        if not task.state.lang_cfg then
+            vim.notify("Language not supported currently!", "error", { title = title })
+            return
+        end
+        return true
+    elseif node_info.name == "result" then
+        vim.notify("This is a result block, not a code block. Look up to the code block!", "warn", { title = title })
+    else
+        vim.notify(string.format("This is not a code block. %s", node_info.name), "warn", { title = title })
     end
-    return true
-  elseif node_info.name == "result" then
-    vim.notify(
-    "This is a result block, not a code block. Look up to the code block!",
-    "warn",
-    { title = title }
-    )
-  else
-    vim.notify(string.format("This is not a code block. %s", node_info.name), "warn", { title = title })
-  end
 end
 
 return M

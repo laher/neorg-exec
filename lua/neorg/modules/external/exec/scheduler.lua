@@ -1,4 +1,3 @@
-
 local running = require("neorg.modules.external.exec.running")
 local M = {
     active = false,

@@ -40,7 +40,7 @@ module.private = {
             mconfig = module.config.public,
             blocknum = blocknum,
             --prep = running.prep_run_block,
-           --- don't know which strategy yet
+            --- don't know which strategy yet
             --do_task_spawn = module.private.do_run_block_spawn,
             --init_session = module.private.init_session,
             --do_task_session = module.private.do_run_block_session,

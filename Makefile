@@ -3,3 +3,6 @@ format:
 
 lint:
 	luacheck lua/
+
+test:
+	./scripts/run_tests.sh
