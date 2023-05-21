@@ -86,18 +86,9 @@ describe("running-handler", function()
     )
   end)
 
-  it("block_2", function()
+  it("virtual", function()
     assert.equal(
-      [[@@ -24,0 +25,8 @@
-+#exec.start 1970.01.01T00.00.00NZST
-+#exec.end 0.0000s 0
-+@result
-+
-+hello, world
-+
-+@end
-+
-]],
+      '',
       prep {
         line = 12,
         file = 'resources/test.norg',

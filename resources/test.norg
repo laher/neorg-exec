@@ -17,7 +17,7 @@ print("Hello")
 
 ** heading3
 
-#tangle
+#exec.render virtual
 @code lua
 print("Sup")
 @end
