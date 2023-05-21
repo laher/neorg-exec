@@ -1,3 +1,5 @@
+
+local running = require("neorg.modules.external.exec.running")
 local M = {
     active = false,
     sessions = {},
@@ -44,7 +46,8 @@ local find_or_init_session = function(task)
             -- it's dead, Jim. start another session
         end
         -- create session
-        task.init_session(task, function() end)
+        -- TODO - some kind of callback/oneshot to know when it dies?
+        running.session.init(task, function() end)
         M.sessions[key] = task
         return task
     end
@@ -57,18 +60,18 @@ local do_task = function(task)
     -- session_identifier is only set when it's a session id
     -- the task needs to recalculate where the hell the block is now (maybe location has changed)
     -- and then defines runtime info for execution
-    if not task.prep(task) then
+    if not running.prep_run_block(task) then
         return function()
             -- nothing to rx
         end
     end
     local session = find_or_init_session(task)
     if session then
-        session.do_task_session(session)
+        running.session.do_run_block(session)
         return function() end
     else
         local tx, rx = a.control.channel.oneshot()
-        task.do_task_spawn(task, tx)
+        running.oneoff.do_run_block(task, tx)
         return rx
     end
 end
