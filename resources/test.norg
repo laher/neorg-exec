@@ -1,0 +1,28 @@
+@document.meta
+tangle: {
+    languages: {
+        lua: ./output.lua
+    }
+    scope: main
+}
+@end
+
+* heading
+
+** heading2
+
+@code lua
+print("Hello")
+@end
+
+** heading3
+
+#tangle
+@code lua
+print("Sup")
+@end
+
+#tangle other-file.lua
+@code lua
+print("Ayo")
+@end
