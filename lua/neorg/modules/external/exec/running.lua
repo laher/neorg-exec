@@ -4,6 +4,7 @@ local renderers = require("neorg.modules.external.exec.renderers")
 
 local title = "external.exec.running"
 local M = {
+    exec_config = nil, -- must be injected during setup
     tmpdir = "/tmp/neorg-exec/", -- TODO use io.tmpname? for portability. Or configuation opt?
 }
 
@@ -16,7 +17,7 @@ M.session = {
 
     do_run_block = function(task)
         -- initialize block
-        renderers[task.state.outmode].init(task)
+        renderers[task.meta.out].init(task)
         local content = table.concat(task.state.code_block.content, "\n")
         task.state.running = true
         task.state.start = os.clock()
@@ -25,7 +26,7 @@ M.session = {
 
         -- after receiving response (hopefully the whole response)
         task.handle_lines_extra = function()
-            renderers[task.state.outmode].render_exit(task, nil)
+            renderers[task.meta.out].render_exit(task, nil)
             spinner.shut(task.state.spinner, renderers.ns)
             task.handle_lines_extra = nil
         end
@@ -63,9 +64,10 @@ M.oneoff = {
     end,
 }
 
-M.handler = function(task, done)
+M.jobopts = function(task, done)
     return {
         stdout_buffered = false,
+        env = task.meta.env,
 
         -- TODO: check colors
         on_stdout = function(_, data)
@@ -83,7 +85,7 @@ M.handler = function(task, done)
                 vim.notify(string.format("exit - non-zero result! %d", data), "warn", { title = title })
             end
 
-            renderers[task.state.outmode].render_exit(task, data)
+            renderers[task.meta.out].render_exit(task, data)
             spinner.shut(task.state.spinner, renderers.ns)
             if task.state.temp_filename then
                 vim.fn.delete(task.state.temp_filename)
@@ -98,7 +100,7 @@ end
 M.spawn = function(task, command, done)
     renderers.init(task)
     -- TODO: move to plenary-job?
-    task.state.jobid = vim.fn.jobstart(command, M.handler(task, done))
+    task.state.jobid = vim.fn.jobstart(command, M.jobopts(task, done))
 end
 
 M.handle_lines = function(task, data, hl)
@@ -106,7 +108,7 @@ M.handle_lines = function(task, data, hl)
         vim.fn.jobstop(task.state.jobid)
         return
     end
-    renderers[task.state.outmode].append(task, data, hl)
+    renderers[task.meta.out].append(task, data, hl)
 
     if task.handle_lines_extra ~= nil then
         task.handle_lines_extra()
@@ -120,10 +122,13 @@ M.init_task = function(task)
 
     table.insert(renderers.extmarks, id)
 
+    task.meta = {
+        out = "inplace", -- depends on tag. to be updated
+
+    }
     task.state = {
         id = id,
         buf = vim.api.nvim_get_current_buf(),
-        outmode = "normal", -- depends on tag. to be updated
         interrupted = false,
         jobid = nil,
         temp_filename = nil,
@@ -140,38 +145,107 @@ M.init_task = function(task)
     return true
 end
 
+local merge_attributes = function(config_defaults, doc_meta, node_attributes)
+  local node_attributes_shallow = {}
+  for _, v in ipairs(node_attributes) do
+    local n = v.name
+    if n == nil then
+      vim.notify(vim.inspect(v))
+    else
+      if string.match(n, 'exec.') then
+        n = string.gsub(n, 'exec.', '', 1) -- replace
+      end
+      node_attributes_shallow[n] = table.concat(v.parameters) -- todo - is concat always ok?
+    end
+  end
+  return vim.tbl_deep_extend("force", config_defaults, doc_meta, node_attributes_shallow)
+end
+
+M.validate_meta = function(task)
+      if not task.meta.out then
+        task.meta.out = "inplace"
+      elseif task.meta.out ~= "virtual" and task.meta.out ~= "inplace" then
+        task.meta.out = 'inplace'
+      end
+
+      if task.meta.enabled == nil then
+        task.meta.enabled = true
+      elseif task.meta.enabled == "false" or task.meta.enabled == 0 or task.meta.enabled == "0" then
+        task.meta.enabled = false
+      end
+
+      -- env could be mangled. let's try to unmangle
+      if not task.meta.env then
+        task.meta.env = {}
+      -- I thought of `#exec.env VAR1=1 VAR2=2`, but I don't want to deal with quotes rn
+      -- elseif type(task.meta.env) == 'string' then
+      --   local s = task.meta.env
+      --   task.meta.env = {}
+      --   for k, v in string.gmatch(s, "(%w+)=(%w+)") do
+      --     task.meta.env[k] = v
+      --   end
+      elseif type(task.meta.env) == 'table' then
+        -- vim.notify('table: ' .. vim.inspect(task.meta))
+        for k, v in pairs(task.meta.env) do
+          task.meta.env[k] = M.stringify_for_env(v)
+        end
+      else
+        -- ignore non-tables. Strings - nah
+        -- vim.notify('type?' .. vim.inspect(task.meta.env))
+        task.meta.env = {}
+        -- task.meta.env = {}
+      end
+      -- support `#exec.env.VAR 1` syntax in carryover tags
+      for k, v in pairs(task.meta) do
+        if k:find('env.', 1, true) == 1 then
+          local sub = k:gsub('^env.', '')
+          task.meta.env[sub] = M.stringify_for_env(v)
+          task.meta[k] = nil -- unset the old `env.x` key
+        end
+      end
+end
+
+M.stringify_for_env = function(v)
+  if type(v) == 'string' or type(v) == nil then
+    return v
+  end
+  if type(v) == nil then
+    return v
+  end
+  if type(v) == 'number' then -- if you want a float, stringify it first
+    return string.format('%d', v)
+  end
+  -- TODO maybe resolve funcs in future. I don't see a use case rn
+  return vim.inspect(v)
+end
+
 M.prep_run_block = function(task)
     local code_blocks = ts.find_all_verbatim_blocks("code", true)
     local node = code_blocks[task.blocknum]
     if not M.init_task(task) then
         return
     end
-    local node_info = ts.node_info(node)
+    local node_info = ts.tag_info(node)
     if not node or not node_info then
         vim.notify(string.format("This is not a code block. %d", task.blocknum), "warn", { title = title })
     elseif node_info.name == "code" then
-        -- default is 'normal'
-        task.state.outmode = "normal"
-        task.state.block_name = nil
-        task.state.session = nil
+        -- task.state.block_name = nil
 
-        local tags = ts.node_carryover_tags(node)
-        for tag, params in pairs(tags) do
-            local paramS = table.concat(params)
-            if tag == "exec.session" then
-                task.state.session = paramS
-            elseif tag == "exec.name" then
-                task.state.block_name = paramS
-            -- vim.notify(params)
-            elseif tag == "exec.render" then
-                -- vim.notify(string.format("result rendering is %s", paramS))
-                if paramS == "virtual" then
-                    task.state.outmode = "virtual"
-                end
-            end
+
+        -- vim.notify(vim.inspect(node_info.parameters))
+        local doc_meta = ts.doc_meta(0)
+        task.meta = merge_attributes(M.exec_config.default_metadata, doc_meta, node_info.attributes)
+
+        -- vim.notify(vim.inspect(meta), "info", { title = title })
+        -- vim.notify(vim.inspect(meta))
+        M.validate_meta(task)
+        if not task.meta.enabled then
+          vim.notify('exec not enabled for this block/doc', 'warn', { title = title })
+          return
         end
-        if task.state.block_name then
-            vim.notify(string.format("running code block '%s'", task.state.block_name), "info", { title = title })
+        -- task.state.block_name = task.meta.name
+        if task.meta.name then
+            vim.notify(string.format("running code block '%s'", task.meta.name), "info", { title = title })
         else
             vim.notify("running unnamed code block", "info", { title = title })
         end
@@ -183,7 +257,7 @@ M.prep_run_block = function(task)
         node_info["parameters"] = vim.split(node_info["parameters"][1], " ")
         local ft = node_info.parameters[1]
         task.state["ft"] = ft
-        task.state.lang_cfg = task.mconfig.lang_cmds[task.state.ft]
+        task.state.lang_cfg = M.exec_config.lang_cmds[task.state.ft]
         if not task.state.lang_cfg then
             vim.notify("Language not supported currently!", "error", { title = title })
             return

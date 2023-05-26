@@ -12,7 +12,7 @@ describe("ts", function()
         assert.equal(
             "3 3",
             ts_happy({
-                file = "+10 resources/test.norg",
+                file = "+10 testdata/test.norg",
             })
         )
     end)
@@ -21,7 +21,7 @@ describe("ts", function()
         assert.equal(
             "3 1",
             ts_happy({
-                file = "+12 resources/test.norg",
+                file = "+12 testdata/test.norg",
             })
         )
     end)

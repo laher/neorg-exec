@@ -7,7 +7,7 @@ local running = require("neorg.modules.external.exec.running")
 
 local title = "external.exec"
 local module = neorg.modules.create("external.exec")
--- local Job = require'plenary.job'
+
 module.setup = function()
     if vim.fn.isdirectory(running.tmpdir) == 0 then
         vim.fn.mkdir(running.tmpdir, "p")
@@ -15,9 +15,16 @@ module.setup = function()
     return { success = true, requires = { "core.neorgcmd", "core.integrations.treesitter" } }
 end
 
+module.config.public = require("neorg.modules.external.exec.config")
+
 module.load = function()
+    -- wire up any dependencies
+    scheduler.exec_config = module.config.public
     scheduler.start()
     ts.ts = module.required["core.integrations.treesitter"]
+    running.exec_config = module.config.public
+
+    -- add subcommands to :Neorg ...
     module.required["core.neorgcmd"].add_commands_from_table({
         exec = {
             args = 1,
@@ -31,26 +38,17 @@ module.load = function()
     })
 end
 
-module.config.public = require("neorg.modules.external.exec.config")
-
 module.private = {
     enqueue_block_by_index = function(blocknum)
         scheduler.enqueue({
             task_type = "run_block",
-            mconfig = module.config.public,
             blocknum = blocknum,
-            --prep = running.prep_run_block,
-            --- don't know which strategy yet
-            --do_task_spawn = module.private.do_run_block_spawn,
-            --init_session = module.private.init_session,
-            --do_task_session = module.private.do_run_block_session,
             state = nil,
         })
     end,
 }
 
 module.public = {
-    -- TODO - all blocks in a section
     exec_block_s_under_cursor = function()
         local my_block = ts.current_verbatim_tag()
         if my_block then
@@ -122,7 +120,7 @@ module.public = {
         end
     end,
 
-    -- TODO: find *all* virtmarks and materialize them. Track them separately to tasks
+    -- TODO : pop this onto the queue
     materialize = function()
         local marks = vim.api.nvim_buf_get_extmarks(0, renderers.ns, 0, -1, {})
         for _, mark in ipairs(marks) do

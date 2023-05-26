@@ -1,4 +1,12 @@
 return {
+    default_metadata = {
+      enabled = true,
+      session = nil,
+      out = "inplace",
+      env = {
+        NEORG = 1,
+      },
+    },
     lang_cmds = {
         --> Interpreted
         python = {

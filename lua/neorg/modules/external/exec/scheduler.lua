@@ -1,5 +1,6 @@
 local running = require("neorg.modules.external.exec.running")
 local M = {
+    exec_config = nil, -- to be injected
     active = false,
     sessions = {},
     find_code_block = nil,
@@ -28,8 +29,8 @@ end
 -- TODO match runtime info to workers when there's a session
 local find_or_init_session = function(task)
     -- if session then repl
-    if task.state.session and task.state.session ~= "" and task.state.lang_cfg.repl then
-        local key = task.state.ft .. ":" .. task.state.session
+    if task.meta.session and task.meta.session ~= "" and task.state.lang_cfg.repl then
+        local key = task.state.ft .. ":" .. task.meta.session
         if M.sessions[key] then
             local s = M.sessions[key]
 

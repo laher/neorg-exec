@@ -2,7 +2,7 @@ local ts = require("neorg.modules.external.exec.ts")
 local spinner = require("neorg.modules.external.exec.spinner")
 local M = {
     virtual = {},
-    normal = {},
+    inplace = {},
     ns = vim.api.nvim_create_namespace("exec"),
     extmarks = {}, -- a sequence of virtual text blocks
 }
@@ -26,7 +26,7 @@ M.endline = function(task, exit_code)
 end
 
 M.init = function(task)
-    M[task.state.outmode].init(task)
+    M[task.meta.out].init(task)
     task.state.running = true
     task.state.start = M.time()
 end
@@ -53,7 +53,7 @@ M.virtual.init = function(task)
 end
 
 M.virtual.clear_next_result_tag = function(buf, p)
-    local pinf = ts.node_info(p)
+    local pinf = ts.tag_info(p)
     vim.api.nvim_buf_clear_namespace(buf, M.ns, pinf["end"].row, pinf["end"].row + 1)
 end
 
@@ -91,31 +91,31 @@ M.virtual.render_exit = function(task, exit_code)
     M.virtual.update(task)
 end
 
-M.normal.init = function(task)
+M.inplace.init = function(task)
     task.state.spinner = spinner.start(task.state, M.ns)
     -- overwrite it
     -- locate existing result block with treesitter and delete it
-    M.normal.clear_next_result_tag(task.state.buf, task.state.node)
+    M.inplace.clear_next_result_tag(task.state.buf, task.state.node)
     if not vim.tbl_isempty(task.state.output) then
         task.state.output = {}
     end
     -- first line is ignored
     local output = { "", "", M.startline(), "@result", "" }
 
-    M.normal.append(task, output)
+    M.inplace.append(task, output)
 
     local linec = task.state.linec
     local charc = task.state.charc
-    M.normal.append(task, { "", "", "@end" })
+    M.inplace.append(task, { "", "", "@end" })
     task.state.linec = linec
     task.state.charc = charc -- don't overwrite @end
 end
 
-M.normal.clear_next_result_tag = function(buf, p)
+M.inplace.clear_next_result_tag = function(buf, p)
     local s = ts.find_next_sibling(p, "^ranged_verbatim_tag$")
 
     if s then
-        local sinf = ts.node_info(s)
+        local sinf = ts.tag_info(s)
         -- needs to be a result before any other rbt's
         if sinf.name == "result" then
             vim.api.nvim_buf_set_lines(
@@ -129,7 +129,7 @@ M.normal.clear_next_result_tag = function(buf, p)
     end
 end
 
-M.normal.append = function(task, lines)
+M.inplace.append = function(task, lines)
     if #lines < 1 then
         -- vim.notify('nothing')
         -- nothing. unexpected!
@@ -172,9 +172,9 @@ M.normal.append = function(task, lines)
     curr_task.linec = curr_task.linec + #lines
 end
 
-M.normal.render_exit = function(task, exit_code)
+M.inplace.render_exit = function(task, exit_code)
     -- include an extra prefix line to indicate last line was complete
-    -- M.normal.append(task, { "", "@end", "" })
+    -- M.inplace.append(task, { "", "@end", "" })
     -- insert directly
     vim.api.nvim_buf_set_lines(
         task.state.buf,

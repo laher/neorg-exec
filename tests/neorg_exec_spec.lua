@@ -1,6 +1,6 @@
 local running = require("neorg.modules.external.exec.running")
 local renderers = require("neorg.modules.external.exec.renderers")
-local config = require("neorg.modules.external.exec.config")
+-- local config = require("neorg.modules.external.exec.config")
 
 renderers.time = function()
     return os.time({ year = 1970, month = 1, day = 1, hour = 0 })
@@ -22,10 +22,9 @@ describe("running-prep", function()
         assert.equal(
             true,
             prep({
-                file = "resources/test.norg",
+                file = "testdata/test.norg",
                 task = {
                     blocknum = 1,
-                    mconfig = config,
                 },
             })
         )
@@ -35,10 +34,9 @@ describe("running-prep", function()
         assert.equal(
             true,
             prep({
-                file = "resources/test.norg",
+                file = "testdata/test.norg",
                 task = {
                     blocknum = 1,
-                    mconfig = config,
                 },
             })
         )
@@ -46,16 +44,16 @@ describe("running-prep", function()
 end)
 
 describe("running-handler", function()
-    local function prep(case)
+    local function do_test(case)
         vim.cmd("e! +" .. case.line .. " " .. case.file)
         local content = vim.api.nvim_buf_get_lines(0, 0, vim.api.nvim_buf_line_count(0), false)
         local before = table.concat(content, "\n")
         running.prep_run_block(case.task)
         renderers.init(case.task)
-        local handler = running.handler(case.task, function() end)
-        handler.on_stdout(_, { "", "hello, world" })
-        handler.on_stdout(_, { "!", "", "this is neorg" }) -- simulate handling of incomplete lines
-        handler.on_exit(_, 0)
+        local jobopts = running.jobopts(case.task, function() end)
+        jobopts.on_stdout(_, { "", "hello, world" })
+        jobopts.on_stdout(_, { "!", "", "this is neorg" }) -- simulate handling of incomplete lines
+        jobopts.on_exit(_, 0)
 
         content = vim.api.nvim_buf_get_lines(0, 0, vim.api.nvim_buf_line_count(0), false)
         local after = table.concat(content, "\n")
@@ -78,12 +76,11 @@ describe("running-handler", function()
 +@end
 +
 ]],
-            prep({
+            do_test({
                 line = 10,
-                file = "resources/test.norg",
+                file = "testdata/test.norg",
                 task = {
                     blocknum = 1,
-                    mconfig = config,
                 },
             })
         )
@@ -92,12 +89,11 @@ describe("running-handler", function()
     it("virtual", function()
         assert.equal(
             "",
-            prep({
+            do_test({
                 line = 12,
-                file = "resources/test.norg",
+                file = "testdata/test.norg",
                 task = {
                     blocknum = 2,
-                    mconfig = config,
                 },
             })
         )

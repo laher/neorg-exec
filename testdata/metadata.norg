@@ -1,0 +1,36 @@
+@document.meta
+exec: {
+  out: virtual
+  env: {
+MYVAR: val
+  }
+}
+@end
+
+* heading
+
+** heading2
+
+#out normal
+@code lua
+print(string.format("Hello, %s", os.getenv("MYVAR")))
+@end
+
+** heading3
+
+@code lua
+print("Sup")
+@end
+
+#tangle other-file.lua
+@code lua
+print("Ayo")
+@end
+
+** heading4
+
+#out normal
+#env.MYVAR newval
+@code lua
+print(string.format("Hello, %s", os.getenv("MYVAR")))
+@end

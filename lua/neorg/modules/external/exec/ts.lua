@@ -1,8 +1,8 @@
 local M = {
-    ts = nil,
+    ts = {}, -- core.integrations.treesitter should be injected by module.lua durign setup
 }
 
-local title = "external.exec.ts"
+local title = "external.exe{}s"
 
 M.current_verbatim_tag = function()
     local ts = M.ts.get_ts_utils()
@@ -45,23 +45,15 @@ M.contained_verbatim_blocks = function(tagname, expect_param)
     return M.find_verbatim_blocks_in(buffer, node, tagname, expect_param)
 end
 
+M.doc_meta = function(buffer)
+    local document_metadata = M.ts.get_document_metadata(buffer)
+    if vim.tbl_isempty(document_metadata) then
+      return {}
+    end
+    return document_metadata.exec or {}
+end
+
 M.find_verbatim_blocks_in = function(buffer, root, tagname, expect_param)
-    local parsed_document_metadata = M.ts.get_document_metadata(buffer)
-
-    if vim.tbl_isempty(parsed_document_metadata) or not parsed_document_metadata.tangle then
-        parsed_document_metadata = {
-            exec = {},
-        }
-    end
-
-    local scope
-    if parsed_document_metadata.exec ~= nil then
-        scope = parsed_document_metadata.exec.scope
-    end
-    local options = {
-        languages = {},
-        scope = scope or "all", -- "all" | "tagged" | "main"
-    }
 
     local has_param = ""
     if expect_param then
@@ -69,7 +61,8 @@ M.find_verbatim_blocks_in = function(buffer, root, tagname, expect_param)
     .
     (tag_param) @_language)]]
     end
-    local query_str = neorg.lib.match(options.scope)({
+    -- todo do we need this split? do we care about tagged vs untaged here?
+    local query_str = neorg.lib.match("all")({
         _ = [[
     (ranged_verbatim_tag
     name: (tag_name) @_name
@@ -96,7 +89,6 @@ M.find_verbatim_blocks_in = function(buffer, root, tagname, expect_param)
     local nodes = {}
 
     for id, node in query:iter_captures(root, buffer, 0, -1) do
-        -- vim.notify('found 1')
         local capture = query.captures[id]
         if capture == "tag" then
             table.insert(nodes, node)
@@ -105,7 +97,7 @@ M.find_verbatim_blocks_in = function(buffer, root, tagname, expect_param)
     return nodes
 end
 
-M.node_info = function(p)
+M.tag_info = function(p)
     -- TODO: Add checks here
     local cb = M.ts.get_tag_info(p, true)
     if not cb then
@@ -138,7 +130,7 @@ M.node_carryover_tags = function(p)
         if child:type() == "strong_carryover_set" then
             for child2, _ in child:iter_children() do
                 if child2:type() == "strong_carryover" then
-                    local cot = M.node_info(child2)
+                    local cot = M.tag_info(child2)
                     tags[cot.name] = cot.parameters
                     -- vim.notify(string.format("%s: %s", cot.name, table.concat(cot.parameters, '-')))
                 end
