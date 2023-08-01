@@ -1,3 +1,6 @@
+local neorg = require("neorg.core")
+local lib, utils = neorg.lib, neorg.utils
+
 local M = {
     ts = {}, -- core.integrations.treesitter should be injected by module.lua durign setup
 }
@@ -62,7 +65,7 @@ M.find_verbatim_blocks_in = function(buffer, root, tagname, expect_param)
     (tag_param) @_language)]]
     end
     -- todo do we need this split? do we care about tagged vs untaged here?
-    local query_str = neorg.lib.match("all")({
+    local query_str = lib.match("all")({
         _ = [[
     (ranged_verbatim_tag
     name: (tag_name) @_name
@@ -85,7 +88,7 @@ M.find_verbatim_blocks_in = function(buffer, root, tagname, expect_param)
     ]],
     })
 
-    local query = neorg.utils.ts_parse_query("norg", query_str)
+    local query = utils.ts_parse_query("norg", query_str)
     local nodes = {}
 
     for id, node in query:iter_captures(root, buffer, 0, -1) do
