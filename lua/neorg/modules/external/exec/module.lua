@@ -1,12 +1,13 @@
----@diagnostic disable: undefined-global
-require("neorg.modules.base")
+local neorg = require("neorg.core")
+local modules = neorg.modules
+
 local ts = require("neorg.modules.external.exec.ts")
 local scheduler = require("neorg.modules.external.exec.scheduler")
 local renderers = require("neorg.modules.external.exec.renderers")
 local running = require("neorg.modules.external.exec.running")
 
 local title = "external.exec"
-local module = neorg.modules.create("external.exec")
+local module = modules.create("external.exec")
 
 module.setup = function()
     if vim.fn.isdirectory(running.tmpdir) == 0 then
