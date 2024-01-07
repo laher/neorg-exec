@@ -1,7 +1,7 @@
 # NOTICE
 
-This project has been cryogenically frozen until I start actively using Neorg again.
-I appreciate the plugin's got broken features (and likely more broken than when I left it, because Neorg itself is changing).
+This project has been **cryogenically frozen** (i.e. I'm not working on it) until I start actively using Neorg again.
+I appreciate the plugin's got broken features, and it's likely more broken than when I left it, because Neorg itself is changing.
 
 Sorry :(
 
