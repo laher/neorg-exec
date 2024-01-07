@@ -6,14 +6,14 @@ I appreciate the plugin's got broken features, and it's likely more broken than 
 Sorry :(
 
 My reasoning:
- - I haven't been working on this project or even using Neorg for some time.
- - Neorg itself just isn't ready yet (for me to use it how I'd like).
+ - I haven't been using this project or even using Neorg for some time - since early August 2023.
+ - Neorg itself just isn't ready yet, for me to use it how I'd like.
  - Specific issues with the current norg parser have made it hard to develop this plugin.
-   - mainly, it's really hard to concurrently output text into range tag, given the current AST. It's really hard avoid writing text out beyond the tag's end marker.
+   - Mainly, it's really hard to concurrently output text correctly inside a ranged tag, given the current AST. It's really hard to avoid writing text out beyond the tag's end marker.
  - The plugin ecosystem isn't ready (for me at least).
-   - mainly, there's no built-in test runner. This plugin is quite ambitious and complex, and it was maddening to rely on manual testing for it.
+   - Mainly, there's no built-in test runner. This plugin is quite ambitious and complex, and it was maddening to rely on manual testing for it.
  
-So, these things which would need to happen before I'd begin working on this again:
+So, these things which would need to happen before I'd personally begin working on this again:
 
  1. Usability: I'm waitng for GTD. (I'm mainly just hoping for a cohesive capture/refile/agenda UI, and I think GTD will include that + much more). _This is on its way_.
  2. Bugfixes: I believe this plugin will be much easier to work on with the new version of the norg parser. i.e. once ranged tags are represented more cleanly in the AST. _Vhyrro has indicated that this will be fixed in the new parser_.
