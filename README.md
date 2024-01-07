@@ -1,3 +1,35 @@
+# NOTICE
+
+This project has been cryogenically frozen until I start actively using Neorg again.
+I appreciate the plugin's got broken features (and likely more broken than when I left it, because Neorg itself is changing).
+
+Sorry :(
+
+My reasoning:
+ - I haven't been working on this project or even using Neorg for some time.
+ - Neorg itself just isn't ready yet (for me to use it how I'd like).
+ - Specific issues with the current norg parser have made it hard to develop this plugin.
+   - mainly, it's really hard to concurrently output text into range tag, given the current AST. It's really hard avoid writing text out beyond the tag's end marker.
+ - The plugin ecosystem isn't ready (for me at least).
+   - mainly, there's no built-in test runner. This plugin is quite ambitious and complex, and it was maddening to rely on manual testing for it.
+ 
+So, these things which would need to happen before I'd begin working on this again:
+
+ 1. Usability: I'm waitng for GTD. (I'm mainly just hoping for a cohesive capture/refile/agenda UI, and I think GTD will include that + much more). _This is on its way_.
+ 2. Bugfixes: I believe this plugin will be much easier to work on with the new version of the norg parser. i.e. once ranged tags are represented more cleanly in the AST. _Vhyrro has indicated that this will be fixed in the new parser_.
+ 3. Developer experience: I'd like a basic test framework for plugin authors to run tests. _Vhyrro has expressed this as a likely future feature, but it's far from the most-urgent thing._
+
+**Please don't take this as a dig at Neorg or the project team, they're great.** 
+Neorg's a great project and I'm still keen to contribute in future.
+
+When Neorg's moved along somewhat, I'll take another look and look to pick this up again. 
+
+In the meantime, PRs are welcome, and I'd be happy to link from this page to an active fork (or alternative plugin), if someone wants to move this forwards.
+
+Ta
+
+----
+
 # neorg-exec
 
     **PRE-ALPHA** - breaking changes incoming soon. See Planning, below
